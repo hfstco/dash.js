@@ -90,6 +90,7 @@ async function init() {
     // 5. Wire up button handlers
     $('#btn-load').addEventListener('click', doLoad);
     $('#btn-stop').addEventListener('click', doStop);
+    $('#btn-export-metrics').addEventListener('click', exportMetrics);
 
     // Copy URL (includes DRM protData from the DRM controller or the selected stream)
     $('#btn-copy-url').addEventListener('click', () => {
@@ -227,6 +228,36 @@ function doStop() {
     controlBar.reset();
     playerController.stop();
     chartController.clearAllData();
+}
+
+// ---- Export metrics ----
+function exportMetrics() {
+    const snapshot = playerController.getAllMetricsSnapshot();
+    if (!snapshot) {
+        return;
+    }
+
+    // Guard against circular references in dash.js objects
+    const seen = new WeakSet();
+    const json = JSON.stringify(snapshot, (key, value) => {
+        if (typeof value === 'object' && value !== null) {
+            if (seen.has(value)) {
+                return undefined;
+            }
+            seen.add(value);
+        }
+        return value;
+    }, 2);
+
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dashjs-metrics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 // ---- Playback ended (loop) ----

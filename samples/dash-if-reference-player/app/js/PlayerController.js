@@ -20,6 +20,7 @@ export class PlayerController extends EventEmitter {
         this._metricsTickCount = 0;
         this._sessionStartTime = 0;
         this._currentRenderedRep = { video: null, audio: null };
+        this._metricsHistory = [];
     }
 
     /**
@@ -148,6 +149,57 @@ export class PlayerController extends EventEmitter {
     }
 
     /**
+     * Build a comprehensive metrics snapshot suitable for export
+     * @returns {Object|null}
+     */
+    getAllMetricsSnapshot() {
+        if (!this.player) {
+            return null;
+        }
+
+        const dashMetrics = this.player.getDashMetrics();
+        const safe = (fn) => {
+            try {
+                return fn();
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const snapshot = {
+            timestamp: new Date().toISOString(),
+            sessionTime: this.getSessionTime(),
+            version: this.getVersion(),
+            source: safe(() => this.player.getSource()) || null,
+            isDynamic: this.isDynamic,
+            periodCount: this.periodCount,
+            activePeriodId: this.activePeriodId,
+            bufferingPeriodId: this.bufferingPeriodId,
+            selectedKeySystem: this.selectedKeySystem,
+            persistentSessionId: this.persistentSessionId,
+            currentTime: this.video ? this.video.currentTime : 0,
+            duration: this.video ? this.video.duration : 0,
+            paused: this.video ? this.video.paused : true,
+            playbackRate: safe(() => this.player.getPlaybackRate()),
+            settings: safe(() => this.player.getSettings()),
+            conformanceViolations: this.conformanceViolations.map(v => v && v.event ? v.event : v),
+            history: this._metricsHistory.slice(),
+            video: this._buildTypeSnapshot('video', dashMetrics, safe),
+            audio: this._buildTypeSnapshot('audio', dashMetrics, safe)
+        };
+
+        if (this.isDynamic) {
+            snapshot.live = {
+                currentLatency: safe(() => this.player.getCurrentLiveLatency()),
+                targetDelay: safe(() => this.player.getTargetLiveDelay()),
+                dvrWindow: safe(() => this.player.getDvrWindow())
+            };
+        }
+
+        return snapshot;
+    }
+
+    /**
      * Destroy the player
      */
     destroy() {
@@ -160,11 +212,30 @@ export class PlayerController extends EventEmitter {
 
     // --- Private methods ---
 
+    _buildTypeSnapshot(type, dashMetrics, safe) {
+        if (!dashMetrics) {
+            return null;
+        }
+        return {
+            gathered: this._gatherMetrics(type, dashMetrics),
+            bufferLevel: safe(() => dashMetrics.getCurrentBufferLevel(type)),
+            bufferState: safe(() => dashMetrics.getCurrentBufferState(type)),
+            representationSwitch: safe(() => dashMetrics.getCurrentRepresentationSwitch(type)),
+            droppedFrames: safe(() => dashMetrics.getCurrentDroppedFrames()),
+            httpRequests: safe(() => dashMetrics.getHttpRequests(type)),
+            currentTrack: safe(() => this.player.getCurrentTrackFor(type)),
+            tracksFor: safe(() => this.player.getTracksFor(type)),
+            averageThroughput: safe(() => this.player.getAverageThroughput(type)),
+            representations: safe(() => this.player.getRepresentationsByType(type))
+        };
+    }
+
     _resetSession() {
         this._sessionStartTime = Date.now();
         this._metricsTickCount = 0;
         this._currentRenderedRep = { video: null, audio: null };
         this.conformanceViolations = [];
+        this._metricsHistory = [];
         this.emit('sessionReset');
     }
 
@@ -290,8 +361,15 @@ export class PlayerController extends EventEmitter {
         const sessionTime = this.getSessionTime();
         const plotEveryOtherTick = this._metricsTickCount % 2 === 0;
 
+        const tick = {
+            timestamp: new Date().toISOString(),
+            sessionTime,
+            currentTime: this.video ? this.video.currentTime : 0
+        };
+
         for (const type of ['video', 'audio']) {
             const metrics = this._gatherMetrics(type, dashMetrics);
+            tick[type] = metrics;
             this.emit('metricsUpdate', {
                 type,
                 metrics,
@@ -299,6 +377,8 @@ export class PlayerController extends EventEmitter {
                 shouldPlot: plotEveryOtherTick
             });
         }
+
+        this._metricsHistory.push(tick);
     }
 
     _gatherMetrics(type, dashMetrics) {
