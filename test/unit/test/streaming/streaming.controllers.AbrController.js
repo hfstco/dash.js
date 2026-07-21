@@ -849,7 +849,7 @@ describe('AbrController', function () {
             const possibleVoRepresentations = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
             expect(possibleVoRepresentations.length).to.equal(2);
             expect(possibleVoRepresentations[1].id).to.equal(2);
-            expect(logSpy.calledWithMatch(sinon.match({message: sinon.match('Using SCONE throughput advice')}))).to.be.true;
+            expect(logSpy.calledWithMatch(sinon.match({message: sinon.match(`Received SCONE throughput advice: ${bitrateList[1].bandwidth}`)}))).to.be.true;
         });
 
         it('should return the right Representations for minBitrate values', function () {
