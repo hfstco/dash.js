@@ -69,6 +69,7 @@ function AbrController() {
         mediaPlayerModel,
         queuedManualQualitySwitches,
         sconeThroughputAdvice,
+        sconeThroughputAdviceLastLogged,
         sconeThroughputAdviceRequest,
         sconeThroughputAdviceRequestTime,
         settings,
@@ -166,6 +167,7 @@ function AbrController() {
 
         currentRepresentationId = undefined;
         sconeThroughputAdvice = NaN;
+        sconeThroughputAdviceLastLogged = NaN;
         sconeThroughputAdviceRequest = null;
         sconeThroughputAdviceRequestTime = 0;
         droppedFramesHistory = undefined;
@@ -416,6 +418,11 @@ function AbrController() {
             const filteredArray = voRepresentations.filter((voRepresentation) => {
                 return voRepresentation.mediaInfo.type !== Constants.VIDEO || voRepresentation.bitrateInKbit <= sconeThroughputAdvice;
             });
+
+            if (sconeThroughputAdvice !== sconeThroughputAdviceLastLogged) {
+                logger.info(`[AbrController] Using SCONE throughput advice: ${sconeThroughputAdvice} kbit/s`);
+                sconeThroughputAdviceLastLogged = sconeThroughputAdvice;
+            }
 
             return filteredArray.length > 0 ? filteredArray : voRepresentations;
         } catch (e) {

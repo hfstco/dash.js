@@ -16,6 +16,7 @@ import PlaybackControllerMock from '../../mocks/PlaybackControllerMock.js';
 import ThroughputControllerMock from '../../mocks/ThroughputControllerMock.js';
 import {expect, assert} from 'chai';
 import EventBus from '../../../../src/core/EventBus.js';
+import Events from '../../../../src/core/events/Events.js';
 import MediaPlayerEvents from '../../../../src/streaming/MediaPlayerEvents.js';
 import sinon from 'sinon';
 import CapabilitiesMock from '../../mocks/CapabilitiesMock.js';
@@ -836,6 +837,9 @@ describe('AbrController', function () {
                 configurable: true,
                 value: sinon.stub().resolves(bitrateList[1].bandwidth)
             });
+            const logSpy = sinon.spy();
+            eventBus.on(Events.LOG, logSpy);
+            settings.update({debug: {dispatchEvent: true}});
 
             // The first call starts the asynchronous Firefox query.
             abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
@@ -845,6 +849,7 @@ describe('AbrController', function () {
             const possibleVoRepresentations = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
             expect(possibleVoRepresentations.length).to.equal(2);
             expect(possibleVoRepresentations[1].id).to.equal(2);
+            expect(logSpy.calledWithMatch(sinon.match({message: sinon.match('Using SCONE throughput advice')}))).to.be.true;
         });
 
         it('should return the right Representations for minBitrate values', function () {
