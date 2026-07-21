@@ -47,6 +47,7 @@ describe('AbrController', function () {
     const playbackControllerMock = new PlaybackControllerMock();
     const throughputControllerMock = new ThroughputControllerMock();
     const capabilitiesMock = new CapabilitiesMock();
+    const originalSconeThroughputAdviceDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getSconeThroughputAdvice');
 
     let streamProcessor;
     let adapterMock;
@@ -82,6 +83,12 @@ describe('AbrController', function () {
         abrCtrl.reset();
         settings.reset();
         eventBus.reset();
+
+        if (originalSconeThroughputAdviceDescriptor) {
+            Object.defineProperty(navigator, 'getSconeThroughputAdvice', originalSconeThroughputAdviceDescriptor);
+        } else {
+            delete navigator.getSconeThroughputAdvice;
+        }
     });
 
     describe('getOptimalRepresentationForBitrate()', function () {
@@ -807,6 +814,37 @@ describe('AbrController', function () {
             possibleVoRepresentations = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
             expect(possibleVoRepresentations.length).to.be.equal(3);
             expect(possibleVoRepresentations[2].id).to.be.equal(3);
+        });
+
+        it('should limit video Representations using Firefox SCONE throughput advice', async function () {
+            const mediaInfo = streamProcessor.getMediaInfo();
+            const bitrateList = mediaInfo.bitrateList;
+
+            adapterMock.getVoRepresentations = () => {
+                return bitrateList.map((bitrate, index) => ({
+                    bitrateInKbit: bitrate.bandwidth / 1000,
+                    mediaInfo,
+                    id: index + 1
+                }));
+            };
+            adapterMock.areMediaInfosEqual = () => true;
+
+            mediaInfo.streamInfo = streamProcessor.getStreamInfo();
+            mediaInfo.type = Constants.VIDEO;
+
+            Object.defineProperty(navigator, 'getSconeThroughputAdvice', {
+                configurable: true,
+                value: sinon.stub().resolves(bitrateList[1].bandwidth)
+            });
+
+            // The first call starts the asynchronous Firefox query.
+            abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            const possibleVoRepresentations = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
+            expect(possibleVoRepresentations.length).to.equal(2);
+            expect(possibleVoRepresentations[1].id).to.equal(2);
         });
 
         it('should return the right Representations for minBitrate values', function () {

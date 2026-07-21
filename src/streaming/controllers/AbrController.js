@@ -45,6 +45,7 @@ import MediaPlayerEvents from '../MediaPlayerEvents.js';
 
 const DEFAULT_VIDEO_BITRATE = 1000;
 const DEFAULT_BITRATE = 100;
+const SCONE_THROUGHPUT_ADVICE_REFRESH_INTERVAL = 1000;
 
 function AbrController() {
 
@@ -67,6 +68,9 @@ function AbrController() {
         logger,
         mediaPlayerModel,
         queuedManualQualitySwitches,
+        sconeThroughputAdvice,
+        sconeThroughputAdviceRequest,
+        sconeThroughputAdviceRequestTime,
         settings,
         streamController,
         streamProcessorDict,
@@ -161,6 +165,9 @@ function AbrController() {
         }
 
         currentRepresentationId = undefined;
+        sconeThroughputAdvice = NaN;
+        sconeThroughputAdviceRequest = null;
+        sconeThroughputAdviceRequestTime = 0;
         droppedFramesHistory = undefined;
         switchRequestHistory = undefined;
         clearTimeout(abandonmentTimeout);
@@ -350,12 +357,70 @@ function AbrController() {
         try {
             voRepresentations = _filterByPossibleBitrate(voRepresentations);
             voRepresentations = _filterByPortalSize(voRepresentations);
+            voRepresentations = _filterBySconeThroughputAdvice(voRepresentations);
             voRepresentations = _filterByCmsdMaxBitrate(voRepresentations);
 
             return voRepresentations;
         } catch (e) {
             logger.error(e);
             return voRepresentations
+        }
+    }
+
+    /**
+     * Refresh the cached SCONE throughput advice exposed by Firefox. Representation
+     * filtering is synchronous, so a newly received value is applied on the next
+     * ABR evaluation.
+     *
+     * @private
+     */
+    function _updateSconeThroughputAdvice() {
+        const now = Date.now();
+
+        if (sconeThroughputAdviceRequest || now - sconeThroughputAdviceRequestTime < SCONE_THROUGHPUT_ADVICE_REFRESH_INTERVAL ||
+            typeof navigator === 'undefined' || typeof navigator.getSconeThroughputAdvice !== 'function') {
+            return;
+        }
+
+        sconeThroughputAdviceRequestTime = now;
+
+        try {
+            sconeThroughputAdviceRequest = Promise.resolve(navigator.getSconeThroughputAdvice())
+                .then((advice) => {
+                    sconeThroughputAdvice = Number.isFinite(advice) && advice > 0 ? advice / 1000 : NaN;
+                })
+                .catch(() => {
+                    // The API is experimental. Ignore failures and retain the last valid advice.
+                })
+                .finally(() => {
+                    sconeThroughputAdviceRequest = null;
+                });
+        } catch (e) {
+            sconeThroughputAdviceRequest = null;
+        }
+    }
+
+    /**
+     * @param {Representation[]} voRepresentations
+     * @return {Representation[]}
+     * @private
+     */
+    function _filterBySconeThroughputAdvice(voRepresentations) {
+        try {
+            _updateSconeThroughputAdvice();
+
+            if (!Number.isFinite(sconeThroughputAdvice)) {
+                return voRepresentations;
+            }
+
+            const filteredArray = voRepresentations.filter((voRepresentation) => {
+                return voRepresentation.mediaInfo.type !== Constants.VIDEO || voRepresentation.bitrateInKbit <= sconeThroughputAdvice;
+            });
+
+            return filteredArray.length > 0 ? filteredArray : voRepresentations;
+        } catch (e) {
+            logger.error(e);
+            return voRepresentations;
         }
     }
 
@@ -1064,4 +1129,3 @@ AbrController.__dashjs_factory_name = 'AbrController';
 const factory = FactoryMaker.getSingletonFactory(AbrController);
 FactoryMaker.updateSingletonFactory(AbrController.__dashjs_factory_name, factory);
 export default factory;
-
