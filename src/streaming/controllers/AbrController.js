@@ -45,7 +45,6 @@ import MediaPlayerEvents from '../MediaPlayerEvents.js';
 
 const DEFAULT_VIDEO_BITRATE = 1000;
 const DEFAULT_BITRATE = 100;
-const SCONE_THROUGHPUT_ADVICE_REFRESH_INTERVAL = 1000;
 
 function AbrController() {
 
@@ -68,9 +67,8 @@ function AbrController() {
         logger,
         mediaPlayerModel,
         queuedManualQualitySwitches,
+        scone,
         sconeThroughputAdvice,
-        sconeThroughputAdviceRequest,
-        sconeThroughputAdviceRequestTime,
         settings,
         streamController,
         streamProcessorDict,
@@ -96,6 +94,8 @@ function AbrController() {
             settings
         });
         abrRulesCollection.initialize();
+
+        _initializeSconeThroughputAdvice();
 
         eventBus.on(MediaPlayerEvents.QUALITY_CHANGE_RENDERED, _onQualityChangeRendered, instance);
         eventBus.on(MediaPlayerEvents.METRIC_ADDED, _onMetricAdded, instance);
@@ -165,9 +165,8 @@ function AbrController() {
         }
 
         currentRepresentationId = undefined;
+        scone = null;
         sconeThroughputAdvice = NaN;
-        sconeThroughputAdviceRequest = null;
-        sconeThroughputAdviceRequestTime = 0;
         droppedFramesHistory = undefined;
         switchRequestHistory = undefined;
         clearTimeout(abandonmentTimeout);
@@ -176,6 +175,7 @@ function AbrController() {
 
     function reset() {
 
+        _resetSconeThroughputAdvice();
         resetInitialSettings();
 
         eventBus.off(MediaPlayerEvents.QUALITY_CHANGE_RENDERED, _onQualityChangeRendered, instance);
@@ -367,38 +367,31 @@ function AbrController() {
         }
     }
 
-    /**
-     * Refresh the cached SCONE throughput advice exposed by Firefox. Representation
-     * filtering is synchronous, so a newly received value is applied on the next
-     * ABR evaluation.
-     *
-     * @private
-     */
-    function _updateSconeThroughputAdvice() {
-        const now = Date.now();
-
-        if (sconeThroughputAdviceRequest || now - sconeThroughputAdviceRequestTime < SCONE_THROUGHPUT_ADVICE_REFRESH_INTERVAL ||
-            typeof navigator === 'undefined' || typeof navigator.getSconeThroughputAdvice !== 'function') {
-            return;
-        }
-
-        sconeThroughputAdviceRequestTime = now;
-
+    function _initializeSconeThroughputAdvice() {
         try {
-            sconeThroughputAdviceRequest = Promise.resolve(navigator.getSconeThroughputAdvice())
-                .then((advice) => {
-                    logger.info(`[AbrController] Received SCONE throughput advice: ${advice}`);
-                    sconeThroughputAdvice = Number.isFinite(advice) && advice > 0 ? advice / 1000 : NaN;
-                })
-                .catch(() => {
-                    // The API is experimental. Ignore failures and retain the last valid advice.
-                })
-                .finally(() => {
-                    sconeThroughputAdviceRequest = null;
-                });
+            if (typeof navigator === 'undefined' || !navigator.scone) {
+                return;
+            }
+
+            scone = navigator.scone;
+            _onSconeThroughputAdviceChange();
+            scone.addEventListener('change', _onSconeThroughputAdviceChange);
         } catch (e) {
-            sconeThroughputAdviceRequest = null;
+            scone = null;
         }
+    }
+
+    function _resetSconeThroughputAdvice() {
+        if (scone) {
+            scone.removeEventListener('change', _onSconeThroughputAdviceChange);
+            scone = null;
+        }
+    }
+
+    function _onSconeThroughputAdviceChange() {
+        const advice = scone ? scone.throughputAdvice : null;
+        logger.info(`[AbrController] Received SCONE throughput advice: ${advice}`);
+        sconeThroughputAdvice = Number.isFinite(advice) && advice > 0 ? advice / 1000 : NaN;
     }
 
     /**
@@ -408,8 +401,6 @@ function AbrController() {
      */
     function _filterBySconeThroughputAdvice(voRepresentations) {
         try {
-            _updateSconeThroughputAdvice();
-
             if (!Number.isFinite(sconeThroughputAdvice)) {
                 return voRepresentations;
             }

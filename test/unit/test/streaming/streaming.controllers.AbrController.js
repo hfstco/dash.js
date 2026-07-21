@@ -16,7 +16,6 @@ import PlaybackControllerMock from '../../mocks/PlaybackControllerMock.js';
 import ThroughputControllerMock from '../../mocks/ThroughputControllerMock.js';
 import {expect, assert} from 'chai';
 import EventBus from '../../../../src/core/EventBus.js';
-import Events from '../../../../src/core/events/Events.js';
 import MediaPlayerEvents from '../../../../src/streaming/MediaPlayerEvents.js';
 import sinon from 'sinon';
 import CapabilitiesMock from '../../mocks/CapabilitiesMock.js';
@@ -48,10 +47,11 @@ describe('AbrController', function () {
     const playbackControllerMock = new PlaybackControllerMock();
     const throughputControllerMock = new ThroughputControllerMock();
     const capabilitiesMock = new CapabilitiesMock();
-    const originalSconeThroughputAdviceDescriptor = Object.getOwnPropertyDescriptor(navigator, 'getSconeThroughputAdvice');
+    const originalSconeDescriptor = Object.getOwnPropertyDescriptor(navigator, 'scone');
 
     let streamProcessor;
     let adapterMock;
+    let sconeMock;
     let videoModelMock;
 
     mediaPlayerModel.setConfig({
@@ -61,6 +61,12 @@ describe('AbrController', function () {
 
     beforeEach(function () {
         adapterMock = new AdapterMock();
+        sconeMock = new EventTarget();
+        sconeMock.throughputAdvice = null;
+        Object.defineProperty(navigator, 'scone', {
+            configurable: true,
+            value: sconeMock
+        });
         videoModelMock = new VideoModelMock();
         abrCtrl.setConfig({
             dashMetrics: dashMetricsMock,
@@ -85,10 +91,10 @@ describe('AbrController', function () {
         settings.reset();
         eventBus.reset();
 
-        if (originalSconeThroughputAdviceDescriptor) {
-            Object.defineProperty(navigator, 'getSconeThroughputAdvice', originalSconeThroughputAdviceDescriptor);
+        if (originalSconeDescriptor) {
+            Object.defineProperty(navigator, 'scone', originalSconeDescriptor);
         } else {
-            delete navigator.getSconeThroughputAdvice;
+            delete navigator.scone;
         }
     });
 
@@ -817,7 +823,7 @@ describe('AbrController', function () {
             expect(possibleVoRepresentations[2].id).to.be.equal(3);
         });
 
-        it('should limit video Representations using Firefox SCONE throughput advice', async function () {
+        it('should limit video Representations when Firefox dispatches a SCONE change event', function () {
             const mediaInfo = streamProcessor.getMediaInfo();
             const bitrateList = mediaInfo.bitrateList;
 
@@ -833,23 +839,12 @@ describe('AbrController', function () {
             mediaInfo.streamInfo = streamProcessor.getStreamInfo();
             mediaInfo.type = Constants.VIDEO;
 
-            Object.defineProperty(navigator, 'getSconeThroughputAdvice', {
-                configurable: true,
-                value: sinon.stub().resolves(bitrateList[1].bandwidth)
-            });
-            const logSpy = sinon.spy();
-            eventBus.on(Events.LOG, logSpy);
-            settings.update({debug: {dispatchEvent: true}});
-
-            // The first call starts the asynchronous Firefox query.
-            abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
-            await Promise.resolve();
-            await Promise.resolve();
+            sconeMock.throughputAdvice = bitrateList[1].bandwidth;
+            sconeMock.dispatchEvent(new Event('change'));
 
             const possibleVoRepresentations = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
             expect(possibleVoRepresentations.length).to.equal(2);
             expect(possibleVoRepresentations[1].id).to.equal(2);
-            expect(logSpy.calledWithMatch(sinon.match({message: sinon.match(`Received SCONE throughput advice: ${bitrateList[1].bandwidth}`)}))).to.be.true;
         });
 
         it('should return the right Representations for minBitrate values', function () {
