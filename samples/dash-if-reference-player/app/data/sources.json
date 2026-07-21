@@ -105,7 +105,7 @@
             "name": "Careful Resume",
             "submenu": [
                 {
-                    "url": "https://quic.hfst.dev/bbb.mpd",
+                    "url": "https://quic.hfst.dev/ClippedBigBuckBunny4s/ClippedBigBuckBunny4s.mpd",
                     "name": "Big Buck Bunny (quic.hfst.dev)",
                     "tags": [
                         "careful-resume"
