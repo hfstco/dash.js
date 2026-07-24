@@ -33,6 +33,8 @@ import FactoryMaker from '../../core/FactoryMaker.js';
 import Settings from '../../core/Settings.js';
 import Constants from '../constants/Constants.js';
 import Debug from '../../core/Debug.js';
+import EventBus from '../../core/EventBus.js';
+import Events from '../../core/events/Events.js';
 
 /**
  * @module FetchLoader
@@ -43,6 +45,7 @@ function FetchLoader() {
 
     const context = this.context;
     const settings = Settings(context).getInstance();
+    const eventBus = EventBus(context).getInstance();
     let instance, boxParser, logger;
 
     function setConfig(cfg) {
@@ -74,6 +77,7 @@ function FetchLoader() {
     }
 
     function _handleFetchResponse(fetchResponse, commonMediaRequest, commonMediaResponse) {
+        _handleSconeResponse(fetchResponse, commonMediaRequest);
         _updateCommonMediaResponseInstance(commonMediaResponse, fetchResponse);
 
         let totalBytesReceived = 0;
@@ -257,6 +261,22 @@ function FetchLoader() {
         }
 
         _readResponseBody(commonMediaRequest, commonMediaResponse, _processResult);
+    }
+
+    function _handleSconeResponse(fetchResponse, commonMediaRequest) {
+        try {
+            const scone = fetchResponse.scone;
+            if (!scone) {
+                return;
+            }
+
+            eventBus.trigger(Events.SCONE_RESPONSE_RECEIVED, {
+                mediaType: commonMediaRequest.customData?.request?.mediaType,
+                scone
+            });
+        } catch (e) {
+            // Response.scone is an experimental Firefox API. Ignore access errors.
+        }
     }
 
     /**

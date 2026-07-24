@@ -95,11 +95,10 @@ function AbrController() {
         });
         abrRulesCollection.initialize();
 
-        _initializeSconeThroughputAdvice();
-
         eventBus.on(MediaPlayerEvents.QUALITY_CHANGE_RENDERED, _onQualityChangeRendered, instance);
         eventBus.on(MediaPlayerEvents.METRIC_ADDED, _onMetricAdded, instance);
         eventBus.on(Events.LOADING_PROGRESS, _onFragmentLoadProgress, instance);
+        eventBus.on(Events.SCONE_RESPONSE_RECEIVED, _onSconeResponseReceived, instance);
         eventBus.on(Events.VIDEO_ELEMENT_RESIZED, _onVideoElementResized, instance);
     }
 
@@ -181,6 +180,7 @@ function AbrController() {
         eventBus.off(MediaPlayerEvents.QUALITY_CHANGE_RENDERED, _onQualityChangeRendered, instance);
         eventBus.off(MediaPlayerEvents.METRIC_ADDED, _onMetricAdded, instance);
         eventBus.off(Events.LOADING_PROGRESS, _onFragmentLoadProgress, instance);
+        eventBus.off(Events.SCONE_RESPONSE_RECEIVED, _onSconeResponseReceived, instance);
         eventBus.off(Events.VIDEO_ELEMENT_RESIZED, _onVideoElementResized, instance);
 
         if (abrRulesCollection) {
@@ -367,18 +367,15 @@ function AbrController() {
         }
     }
 
-    function _initializeSconeThroughputAdvice() {
-        try {
-            if (typeof navigator === 'undefined' || !navigator.scone) {
-                return;
-            }
-
-            scone = navigator.scone;
-            _onSconeThroughputAdviceChange();
-            scone.addEventListener('change', _onSconeThroughputAdviceChange);
-        } catch (e) {
-            scone = null;
+    function _onSconeResponseReceived(e) {
+        if (!e || e.mediaType !== Constants.VIDEO || !e.scone || e.scone === scone) {
+            return;
         }
+
+        _resetSconeThroughputAdvice();
+        scone = e.scone;
+        _onSconeThroughputAdviceChange();
+        scone.addEventListener('change', _onSconeThroughputAdviceChange);
     }
 
     function _resetSconeThroughputAdvice() {

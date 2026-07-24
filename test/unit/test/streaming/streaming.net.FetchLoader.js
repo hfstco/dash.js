@@ -1,12 +1,64 @@
 import FetchLoader from '../../../../src/streaming/net/FetchLoader.js';
+import EventBus from '../../../../src/core/EventBus.js';
+import Events from '../../../../src/core/events/Events.js';
+import Constants from '../../../../src/streaming/constants/Constants.js';
 
 import {expect} from 'chai';
+import sinon from 'sinon';
 
 const context = {};
 
 let fetchLoader;
 
 describe('FetchLoader', function () {
+    it('should expose the SCONE object from a Firefox Fetch response', async () => {
+        const eventBus = EventBus(context).getInstance();
+        const scone = new EventTarget();
+        const response = {
+            body: {
+                getReader: () => ({
+                    read: () => Promise.resolve({done: true})
+                })
+            },
+            headers: new Headers(),
+            scone,
+            status: 200,
+            statusText: 'OK',
+            url: 'https://example.com/segment.m4s'
+        };
+        const fetchStub = sinon.stub(window, 'fetch').resolves(response);
+        const sconeSpy = sinon.spy();
+        eventBus.on(Events.SCONE_RESPONSE_RECEIVED, sconeSpy);
+
+        try {
+            fetchLoader = FetchLoader(context).create({});
+            const completed = new Promise((resolve) => {
+                fetchLoader.load({
+                    credentials: 'omit',
+                    customData: {
+                        onabort: () => {},
+                        onloadend: resolve,
+                        onprogress: () => {},
+                        request: {mediaType: Constants.VIDEO}
+                    },
+                    headers: {},
+                    method: 'GET',
+                    url: response.url
+                }, {});
+            });
+
+            await completed;
+            expect(sconeSpy.calledOnce).to.be.true;
+            expect(sconeSpy.firstCall.args[0]).to.deep.include({
+                mediaType: Constants.VIDEO,
+                scone
+            });
+        } finally {
+            fetchStub.restore();
+            eventBus.reset();
+        }
+    });
+
     it('should calculate the proper download time based on fetch progress datum', () => {
         fetchLoader = FetchLoader(context).create({});
 
