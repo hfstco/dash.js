@@ -185,7 +185,7 @@
       ]
     },
     {
-      "name": "LiveSim2 - DRM EZDRM-1-key-cbcs",
+      "name": "LiveSim2 - DRM EZDRM-1-key-cbcs - Widevine, Playready, Fairplay",
       "type": "live",
       "url": "https://livesim2.dashif.org/livesim2/drm_EZDRM-1-key-cbcs/testpic_2s/Manifest.mpd",
       "includedTestfiles": [
@@ -308,6 +308,36 @@
       ]
     },
     {
+      "name": "Multiperiod encrypted to unencrypted",
+      "type": "vod",
+      "url": "/base/test/functional/content/multi-period/enc-unenc.mpd",
+      "testdata": {
+        "periods": {
+          "waitingTimeForPeriodSwitches": 16000,
+          "minimumNumberOfPeriodSwitches": 1,
+          "maximumNumberOfPeriodSwitches": 1
+        }
+      },
+      "includedTestfiles": [
+        "playback-advanced/multiperiod-playback"
+      ]
+    },
+    {
+      "name": "Multiperiod unencrypted to encrypted",
+      "type": "vod",
+      "url": "/base/test/functional/content/multi-period/unenc-enc.mpd",
+      "testdata": {
+        "periods": {
+          "waitingTimeForPeriodSwitches": 10000,
+          "minimumNumberOfPeriodSwitches": 1,
+          "maximumNumberOfPeriodSwitches": 1
+        }
+      },
+      "includedTestfiles": [
+        "playback-advanced/multiperiod-playback"
+      ]
+    },
+    {
       "name": "DASH-IF Multiperiod Segment Template",
       "type": "live",
       "url": "https://livesim2.dashif.org/livesim2/periods_60/continuous_1/testpic_2s/Manifest.mpd",
@@ -323,6 +353,19 @@
       ]
     },
     {
+      "name": "Preload single period then play multiperiod",
+      "type": "vod",
+      "url": "/base/test/functional/content/preload/preload-singleperiod-play-multiperiod.mpd",
+      "testdata": {
+        "preloadSingleperiodPlayMultiperiod": {
+          "waitingTimeForPeriodSwitch": 15000
+        }
+      },
+      "includedTestfiles": [
+        "playback-advanced/preload-singleperiod-play-multiperiod"
+      ]
+    },
+    {
       "name": "TTML Segmented Subtitles Live (livesim2)",
       "url": "https://livesim2.dashif.org/livesim2/testpic_2s/multi_subs.mpd",
       "provider": "dashif",
@@ -333,6 +376,15 @@
         "playback/seek",
         "playback/seek-to-presentation-time",
         "text/*"
+      ]
+    },
+    {
+      "name": "L3D-DASH LiveSim2",
+      "url": "https://livesim2.dashif.org/livesim2/segtimelinenr_1/chunkdur_0.5/ssras_2,1/chunkdurssr_2,0.2/testpic_2s_low_delay/Manifest.mpd",
+      "provider": "dashif",
+      "type": "live",
+      "includedTestfiles": [
+        "playback/*"
       ]
     },
     {
@@ -377,6 +429,28 @@
           "runtime": 20000
         }
       }
+    },
+    {
+      "name": "Dynamic to static transition with LiveSim2 using an MPD Location element",
+      "type": "live",
+      "url": "https://livesim2.dashif.org/livesim2/startrel_-20/stoprel_6/testpic_2s/Manifest.mpd",
+      "includedTestfiles": [
+        "feature-support/dynamic-to-static"
+      ],
+      "testdata": {
+        "dynamicToStatic": {
+          "runtime": 20000,
+          "checkReplay": true
+        }
+      }
+    },
+    {
+      "name": "BBB 30fps VoD CMCD v2",
+      "type": "vod",
+      "url": "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
+      "includedTestfiles": [
+        "feature-support/cmcd-v2"
+      ]
     }
   ]
 }
