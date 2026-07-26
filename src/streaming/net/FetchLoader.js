@@ -264,19 +264,14 @@ function FetchLoader() {
     }
 
     function _handleSconeResponse(fetchResponse, commonMediaRequest) {
-        try {
-            const scone = fetchResponse.scone;
-            if (!scone) {
-                return;
-            }
-
-            eventBus.trigger(Events.SCONE_RESPONSE_RECEIVED, {
-                mediaType: commonMediaRequest.customData?.request?.mediaType,
-                scone
-            });
-        } catch (e) {
-            // Response.scone is an experimental Firefox API. Ignore access errors.
+        if (!fetchResponse.scone) {
+            return;
         }
+
+        eventBus.trigger(Events.SCONE_RESPONSE_RECEIVED, {
+            mediaType: commonMediaRequest.customData?.request?.mediaType,
+            response: fetchResponse
+        });
     }
 
     /**

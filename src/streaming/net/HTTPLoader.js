@@ -584,7 +584,7 @@ function HTTPLoader(cfg) {
 
         const supportsScone = typeof Response !== 'undefined' && 'scone' in Response.prototype;
         const useFetch = !request.isPartialSegmentRequest && window.fetch && request.responseType === 'arraybuffer' && request.type === HTTPRequest.MEDIA_SEGMENT_TYPE &&
-            ((request.hasOwnProperty('availabilityTimeComplete') && request.availabilityTimeComplete === false) || supportsScone);
+            (request.availabilityTimeComplete === false || supportsScone);
 
         if (useFetch) {
             if (!fetchLoader) {

@@ -67,7 +67,7 @@ function AbrController() {
         logger,
         mediaPlayerModel,
         queuedManualQualitySwitches,
-        scone,
+        sconeResponse,
         sconeThroughputAdvice,
         settings,
         streamController,
@@ -164,7 +164,7 @@ function AbrController() {
         }
 
         currentRepresentationId = undefined;
-        scone = null;
+        sconeResponse = null;
         sconeThroughputAdvice = NaN;
         droppedFramesHistory = undefined;
         switchRequestHistory = undefined;
@@ -174,7 +174,7 @@ function AbrController() {
 
     function reset() {
 
-        _resetSconeThroughputAdvice();
+        _resetScone();
         resetInitialSettings();
 
         eventBus.off(MediaPlayerEvents.QUALITY_CHANGE_RENDERED, _onQualityChangeRendered, instance);
@@ -368,25 +368,30 @@ function AbrController() {
     }
 
     function _onSconeResponseReceived(e) {
-        if (!e || e.mediaType !== Constants.VIDEO || !e.scone || e.scone === scone) {
+        const response = e?.response;
+        const scone = response?.scone;
+
+        if (e?.mediaType !== Constants.VIDEO || !scone || response === sconeResponse) {
             return;
         }
 
-        _resetSconeThroughputAdvice();
-        scone = e.scone;
-        _onSconeThroughputAdviceChange();
-        scone.addEventListener('change', _onSconeThroughputAdviceChange);
+        _resetScone();
+        // Firefox keeps the SCONE connection registered for the lifetime of the Response.
+        sconeResponse = response;
+        _updateSconeThroughputAdvice();
+        scone.addEventListener('change', _updateSconeThroughputAdvice);
     }
 
-    function _resetSconeThroughputAdvice() {
+    function _resetScone() {
+        const scone = sconeResponse?.scone;
         if (scone) {
-            scone.removeEventListener('change', _onSconeThroughputAdviceChange);
-            scone = null;
+            scone.removeEventListener('change', _updateSconeThroughputAdvice);
         }
+        sconeResponse = null;
     }
 
-    function _onSconeThroughputAdviceChange() {
-        const advice = scone ? scone.throughputAdvice : null;
+    function _updateSconeThroughputAdvice() {
+        const advice = sconeResponse?.scone?.throughputAdvice ?? null;
         logger.info(`[AbrController] Received SCONE throughput advice: ${advice}`);
         sconeThroughputAdvice = Number.isFinite(advice) && advice > 0 ? advice / 1000 : NaN;
     }

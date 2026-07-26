@@ -4,6 +4,8 @@
 
 import {EventEmitter} from './UIHelpers.js';
 
+const MAX_EXPORT_HISTORY_ENTRIES = 3600;
+
 export class PlayerController extends EventEmitter {
     constructor() {
         super();
@@ -21,10 +23,7 @@ export class PlayerController extends EventEmitter {
         this._sessionStartTime = 0;
         this._currentRenderedRep = { video: null, audio: null };
         this._metricsHistory = [];
-        this._playerEvents = [];
-        this._eventNamesByType = {};
-        this._segmentRequests = [];
-        this._abrRuleLog = [];
+        this._eventHistory = [];
     }
 
     /**
@@ -162,48 +161,25 @@ export class PlayerController extends EventEmitter {
         }
 
         const dashMetrics = this.player.getDashMetrics();
-        const safe = (fn) => {
-            try {
-                return fn();
-            } catch (e) {
-                return null;
-            }
-        };
-
-        const snapshot = {
+        return {
             timestamp: new Date().toISOString(),
             sessionTime: this.getSessionTime(),
             version: this.getVersion(),
-            source: safe(() => this.player.getSource()) || null,
-            isDynamic: this.isDynamic,
-            periodCount: this.periodCount,
-            activePeriodId: this.activePeriodId,
-            bufferingPeriodId: this.bufferingPeriodId,
-            selectedKeySystem: this.selectedKeySystem,
-            persistentSessionId: this.persistentSessionId,
-            currentTime: this.video ? this.video.currentTime : 0,
-            duration: this.video ? this.video.duration : 0,
-            paused: this.video ? this.video.paused : true,
-            playbackRate: safe(() => this.player.getPlaybackRate()),
-            settings: safe(() => this.player.getSettings()),
-            conformanceViolations: this.conformanceViolations.map(v => v && v.event ? v.event : v),
-            playerEvents: this._playerEvents.slice(),
-            segmentRequests: this._segmentRequests.slice(),
-            abrRules: this._abrRuleLog.slice(),
+            source: this.player.getSource(),
+            playback: {
+                currentTime: this.video ? this.video.currentTime : 0,
+                duration: this.video ? this.video.duration : 0,
+                paused: this.video ? this.video.paused : true,
+                playbackRate: this.player.getPlaybackRate(),
+                isDynamic: this.isDynamic
+            },
+            settings: this.player.getSettings(),
+            conformanceViolations: this.conformanceViolations.map(v => v?.event || v),
+            events: this._eventHistory.slice(),
             history: this._metricsHistory.slice(),
-            video: this._buildTypeSnapshot('video', dashMetrics, safe),
-            audio: this._buildTypeSnapshot('audio', dashMetrics, safe)
+            video: this._buildTypeSnapshot('video', dashMetrics),
+            audio: this._buildTypeSnapshot('audio', dashMetrics)
         };
-
-        if (this.isDynamic) {
-            snapshot.live = {
-                currentLatency: safe(() => this.player.getCurrentLiveLatency()),
-                targetDelay: safe(() => this.player.getTargetLiveDelay()),
-                dvrWindow: safe(() => this.player.getDvrWindow())
-            };
-        }
-
-        return snapshot;
     }
 
     /**
@@ -219,22 +195,24 @@ export class PlayerController extends EventEmitter {
 
     // --- Private methods ---
 
-    _buildTypeSnapshot(type, dashMetrics, safe) {
+    _buildTypeSnapshot(type, dashMetrics) {
         if (!dashMetrics) {
             return null;
         }
-        return {
-            gathered: this._gatherMetrics(type, dashMetrics),
-            bufferLevel: safe(() => dashMetrics.getCurrentBufferLevel(type)),
-            bufferState: safe(() => dashMetrics.getCurrentBufferState(type)),
-            representationSwitch: safe(() => dashMetrics.getCurrentRepresentationSwitch(type)),
-            droppedFrames: safe(() => dashMetrics.getCurrentDroppedFrames()),
-            httpRequests: safe(() => dashMetrics.getHttpRequests(type)),
-            currentTrack: safe(() => this.player.getCurrentTrackFor(type)),
-            tracksFor: safe(() => this.player.getTracksFor(type)),
-            averageThroughput: safe(() => this.player.getAverageThroughput(type)),
-            representations: safe(() => this.player.getRepresentationsByType(type))
+
+        const snapshot = {
+            current: this._gatherMetrics(type, dashMetrics)
         };
+
+        try {
+            snapshot.httpRequests = dashMetrics.getHttpRequests(type);
+            snapshot.currentTrack = this.player.getCurrentTrackFor(type);
+            snapshot.representations = this.player.getRepresentationsByType(type);
+        } catch (e) {
+            // Media information may not be available before a source is attached.
+        }
+
+        return snapshot;
     }
 
     _resetSession() {
@@ -243,15 +221,12 @@ export class PlayerController extends EventEmitter {
         this._currentRenderedRep = { video: null, audio: null };
         this.conformanceViolations = [];
         this._metricsHistory = [];
-        this._playerEvents = [];
-        this._segmentRequests = [];
-        this._abrRuleLog = [];
+        this._eventHistory = [];
         this.emit('sessionReset');
     }
 
     _registerEvents() {
         const events = dashjs.MediaPlayer.events;
-        this._eventNamesByType = this._buildEventNamesByType(events);
 
         this.player.on(events.ERROR, (e) => this._onError(e));
         this.player.on(events.MANIFEST_LOADED, (e) => this._onManifestLoaded(e));
@@ -265,349 +240,57 @@ export class PlayerController extends EventEmitter {
         this.player.on(events.KEY_SESSION_CREATED, (e) => this._onKeySessionCreated(e));
         this.player.on(events.CONFORMANCE_VIOLATION, (e) => this._onConformanceViolation(e));
         this.player.on(events.LOG, (e) => this._onLog(e));
-        this.player.on(events.FRAGMENT_LOADING_STARTED, (e) => this._onSegmentRequestStarted(e));
-        this.player.on(events.FRAGMENT_LOADING_COMPLETED, (e) => this._onSegmentRequestCompleted(e));
-        this.player.on(events.FRAGMENT_LOADING_ABANDONED, (e) => this._onSegmentRequestAbandoned(e));
-        this.player.on(events.QUALITY_CHANGE_REQUESTED, (e) => this._onAbrRuleDecision(e));
-
-        for (const type of Object.keys(this._eventNamesByType)) {
-            this.player.on(type, (e) => this._recordPlayerEvent(e));
-        }
+        [
+            events.FRAGMENT_LOADING_STARTED,
+            events.FRAGMENT_LOADING_COMPLETED,
+            events.FRAGMENT_LOADING_ABANDONED,
+            events.QUALITY_CHANGE_REQUESTED
+        ].forEach((type) => {
+            this.player.on(type, (e) => this._recordExportEvent(type, e));
+        });
     }
 
-    _buildEventNamesByType(events) {
-        const namesByType = {};
-
-        for (const [name, type] of Object.entries(events)) {
-            if (typeof type !== 'string' || type === events.EVENT_MODE_ON_START || type === events.EVENT_MODE_ON_RECEIVE) {
-                continue;
-            }
-            namesByType[type] = namesByType[type] || [];
-            namesByType[type].push(name);
-        }
-
-        return namesByType;
-    }
-
-    _recordPlayerEvent(e) {
-        if (!e || !e.type) {
-            return;
-        }
-
-        this._playerEvents.push({
+    _recordExportEvent(type, e = {}) {
+        const request = e.request;
+        const representation = request?.representation;
+        const entry = {
             timestamp: new Date().toISOString(),
             sessionTime: this.getSessionTime(),
-            type: e.type,
-            names: this._eventNamesByType[e.type] || [],
-            data: this._cloneForExport(e)
-        });
-    }
-
-    _cloneForExport(value, depth = 0, seen = new WeakSet()) {
-        const MAX_DEPTH = 6;
-        const MAX_ARRAY_ITEMS = 100;
-
-        if (value === null || typeof value !== 'object') {
-            return typeof value === 'function' ? undefined : value;
-        }
-        if (value instanceof Date) {
-            return value.toISOString();
-        }
-        if (seen.has(value)) {
-            return '[Circular]';
-        }
-        if (depth >= MAX_DEPTH) {
-            return '[MaxDepth]';
-        }
-        if (typeof Event !== 'undefined' && value instanceof Event) {
-            return {
-                type: value.type,
-                timeStamp: value.timeStamp
-            };
-        }
-        if (typeof Element !== 'undefined' && value instanceof Element) {
-            return {
-                nodeName: value.nodeName,
-                id: value.id || undefined,
-                className: value.className || undefined
-            };
-        }
-
-        seen.add(value);
-
-        if (Array.isArray(value)) {
-            const clone = value.slice(0, MAX_ARRAY_ITEMS).map(item => this._cloneForExport(item, depth + 1, seen));
-            if (value.length > MAX_ARRAY_ITEMS) {
-                clone.push(`[${value.length - MAX_ARRAY_ITEMS} more items]`);
-            }
-            seen.delete(value);
-            return clone;
-        }
-
-        const clone = {};
-        for (const [key, item] of Object.entries(value)) {
-            const clonedItem = this._cloneForExport(item, depth + 1, seen);
-            if (clonedItem !== undefined) {
-                clone[key] = clonedItem;
-            }
-        }
-
-        seen.delete(value);
-        return clone;
-    }
-
-    _onSegmentRequestStarted(e) {
-        const request = e && e.request;
-        if (!this._isSegmentRequest(request)) {
-            return;
-        }
-
-        this._segmentRequests.push({
-            id: this._segmentRequests.length + 1,
-            startedAt: new Date().toISOString(),
-            completedAt: null,
-            sessionTime: this.getSessionTime(),
-            status: 'started',
-            request: this._buildSegmentRequestLog(request),
-            response: null,
-            error: null
-        });
-    }
-
-    _onSegmentRequestCompleted(e) {
-        const request = e && e.request;
-        if (!this._isSegmentRequest(request)) {
-            return;
-        }
-
-        const entry = this._findSegmentRequestEntry(request);
-        if (!entry) {
-            return;
-        }
-
-        entry.completedAt = new Date().toISOString();
-        entry.durationMs = this._calculateRequestDuration(request);
-        entry.status = e.error ? 'failed' : 'completed';
-        entry.request = this._buildSegmentRequestLog(request);
-        entry.response = this._buildSegmentResponseLog(request, e.response);
-        entry.error = e.error ? this._cloneForExport(e.error) : null;
-    }
-
-    _onSegmentRequestAbandoned(e) {
-        const request = e && e.request;
-        if (!this._isSegmentRequest(request)) {
-            return;
-        }
-
-        const entry = this._findSegmentRequestEntry(request);
-        if (!entry) {
-            return;
-        }
-
-        entry.completedAt = new Date().toISOString();
-        entry.durationMs = this._calculateRequestDuration(request);
-        entry.status = 'abandoned';
-        entry.request = this._buildSegmentRequestLog(request);
-    }
-
-    _isSegmentRequest(request) {
-        return request && [
-            'MediaSegment',
-            'InitializationSegment',
-            'IndexSegment',
-            'BitstreamSwitchingSegment',
-            'FragmentInfoSegment'
-        ].includes(request.type);
-    }
-
-    _findSegmentRequestEntry(request) {
-        for (let i = this._segmentRequests.length - 1; i >= 0; i--) {
-            const entry = this._segmentRequests[i];
-            if (entry.status === 'started' && this._isSameSegmentRequest(entry.request, request)) {
-                return entry;
-            }
-        }
-        return null;
-    }
-
-    _isSameSegmentRequest(entryRequest, request) {
-        return entryRequest &&
-            entryRequest.url === request.url &&
-            entryRequest.range === (request.range || null) &&
-            entryRequest.mediaType === (request.mediaType || null) &&
-            entryRequest.type === (request.type || null);
-    }
-
-    _buildSegmentRequestLog(request) {
-        const representation = request.representation || {};
-
-        return {
-            url: request.url || null,
-            mediaType: request.mediaType || null,
-            type: request.type || null,
-            range: request.range || null,
-            headers: this._cloneForExport(request.headers || {}),
-            startDate: this._dateToISOString(request.startDate),
-            firstByteDate: this._dateToISOString(request.firstByteDate),
-            endDate: this._dateToISOString(request.endDate),
-            startTime: this._numberOrNull(request.startTime),
-            duration: this._numberOrNull(request.duration),
-            mediaStartTime: this._numberOrNull(request.mediaStartTime),
-            presentationStartTime: this._numberOrNull(request.presentationStartTime),
-            index: this._numberOrNull(request.index),
-            bandwidth: this._numberOrNull(request.bandwidth),
-            retryAttempts: request.retryAttempts || 0,
-            serviceLocation: request.serviceLocation || null,
-            fileLoaderType: request.fileLoaderType || null,
-            representation: {
-                id: representation.id || null,
-                bandwidth: this._numberOrNull(representation.bandwidth),
-                width: this._numberOrNull(representation.width),
-                height: this._numberOrNull(representation.height),
-                codecs: representation.codecs || null
-            }
+            type,
+            mediaType: e.mediaType || request?.mediaType || null,
+            request: request ? {
+                url: request.url,
+                type: request.type,
+                range: request.range,
+                startTime: request.startTime,
+                duration: request.duration,
+                representationId: representation?.id
+            } : null,
+            oldRepresentation: this._getRepresentationSummary(e.oldRepresentation),
+            newRepresentation: this._getRepresentationSummary(e.newRepresentation),
+            reason: e.reason || null,
+            error: e.error || null
         };
+
+        this._addToExportHistory(this._eventHistory, entry);
     }
 
-    _buildSegmentResponseLog(request, response) {
-        const httpRequest = this._findHttpRequestMetric(request);
-
-        return {
-            url: httpRequest ? httpRequest.actualurl || httpRequest.url : request.url || null,
-            status: httpRequest ? httpRequest.responsecode : null,
-            headers: httpRequest ? this._parseResponseHeaders(httpRequest._responseHeaders) : null,
-            bytesLoaded: this._numberOrNull(request.bytesLoaded),
-            bytesTotal: this._numberOrNull(request.bytesTotal),
-            bodyLength: this._getBodyLength(response),
-            traces: request.traces ? this._cloneForExport(request.traces) : null,
-            cmsd: httpRequest && httpRequest.cmsd ? this._cloneForExport(httpRequest.cmsd) : null,
-            resourceTiming: request.resourceTimingValues ? this._cloneForExport(request.resourceTimingValues) : null
-        };
+    _getRepresentationSummary(representation) {
+        return representation ? {
+            id: representation.id,
+            bitrateInKbit: representation.bitrateInKbit,
+            bandwidth: representation.bandwidth,
+            width: representation.width,
+            height: representation.height,
+            codecs: representation.codecs
+        } : null;
     }
 
-    _findHttpRequestMetric(request) {
-        try {
-            const httpRequests = this.player.getDashMetrics().getHttpRequests(request.mediaType);
-            if (!httpRequests || httpRequests.length === 0) {
-                return null;
-            }
-
-            for (let i = httpRequests.length - 1; i >= 0; i--) {
-                const httpRequest = httpRequests[i];
-                if (httpRequest &&
-                    httpRequest.url === request.url &&
-                    (httpRequest.range || null) === (request.range || null) &&
-                    httpRequest.type === request.type) {
-                    return httpRequest;
-                }
-            }
-        } catch (e) {
-            return null;
+    _addToExportHistory(history, entry) {
+        history.push(entry);
+        if (history.length > MAX_EXPORT_HISTORY_ENTRIES) {
+            history.splice(0, history.length - MAX_EXPORT_HISTORY_ENTRIES);
         }
-
-        return null;
-    }
-
-    _parseResponseHeaders(headerString) {
-        if (!headerString) {
-            return {};
-        }
-
-        return headerString.trim().split(/\r?\n/).reduce((headers, line) => {
-            const separatorIndex = line.indexOf(':');
-            if (separatorIndex > -1) {
-                headers[line.slice(0, separatorIndex).trim()] = line.slice(separatorIndex + 1).trim();
-            }
-            return headers;
-        }, {});
-    }
-
-    _calculateRequestDuration(request) {
-        if (request.startDate instanceof Date && request.endDate instanceof Date) {
-            return request.endDate.getTime() - request.startDate.getTime();
-        }
-        return null;
-    }
-
-    _getBodyLength(response) {
-        if (!response) {
-            return 0;
-        }
-        if (typeof response.byteLength === 'number') {
-            return response.byteLength;
-        }
-        if (typeof response.length === 'number') {
-            return response.length;
-        }
-        return null;
-    }
-
-    _dateToISOString(date) {
-        return date instanceof Date ? date.toISOString() : null;
-    }
-
-    _numberOrNull(value) {
-        return typeof value === 'number' && !isNaN(value) ? value : null;
-    }
-
-    _onAbrRuleDecision(e) {
-        if (!e || !e.reason) {
-            return;
-        }
-
-        this._abrRuleLog.push({
-            timestamp: new Date().toISOString(),
-            sessionTime: this.getSessionTime(),
-            mediaType: e.mediaType || null,
-            streamId: e.streamInfo ? e.streamInfo.id : null,
-            rules: this._getAbrRuleNames(e.reason),
-            oldRepresentation: this._buildRepresentationLog(e.oldRepresentation),
-            newRepresentation: this._buildRepresentationLog(e.newRepresentation),
-            isAdaptationSetSwitch: !!e.isAdaptationSetSwitch,
-            forceAbandon: !!e.reason.forceAbandon,
-            reason: this._cloneForExport(e.reason)
-        });
-    }
-
-    _getAbrRuleNames(reason) {
-        const names = [];
-
-        if (reason.message) {
-            const matches = reason.message.matchAll(/\[([^\]]+Rule)\]/g);
-            for (const match of matches) {
-                names.push(match[1]);
-            }
-        }
-        if (reason.state && reason.state.indexOf('BOLA_') === 0) {
-            names.push('BolaRule');
-        }
-        if (reason.state && reason.state.indexOf('L2A_') === 0) {
-            names.push('L2ARule');
-        }
-        if (reason.forceAbandon) {
-            names.push('AbandonRequestsRule');
-        }
-        if (names.length === 0 && reason.throughput !== undefined && reason.latency !== undefined) {
-            names.push('LoLPRule');
-        }
-
-        return [...new Set(names)];
-    }
-
-    _buildRepresentationLog(representation) {
-        if (!representation) {
-            return null;
-        }
-
-        return {
-            id: representation.id || null,
-            absoluteIndex: this._numberOrNull(representation.absoluteIndex),
-            bitrateInKbit: this._numberOrNull(representation.bitrateInKbit),
-            bandwidth: this._numberOrNull(representation.bandwidth),
-            width: this._numberOrNull(representation.width),
-            height: this._numberOrNull(representation.height),
-            codecs: representation.codecs || null
-        };
     }
 
     _onError(e) {
@@ -741,7 +424,7 @@ export class PlayerController extends EventEmitter {
             });
         }
 
-        this._metricsHistory.push(tick);
+        this._addToExportHistory(this._metricsHistory, tick);
     }
 
     _gatherMetrics(type, dashMetrics) {

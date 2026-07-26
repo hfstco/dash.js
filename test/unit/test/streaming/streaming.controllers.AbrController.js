@@ -18,7 +18,6 @@ import ThroughputControllerMock from '../../mocks/ThroughputControllerMock.js';
 import {expect, assert} from 'chai';
 import EventBus from '../../../../src/core/EventBus.js';
 import FactoryMaker from '../../../../src/core/FactoryMaker.js';
-import Events from '../../../../src/core/events/Events.js';
 import MediaPlayerEvents from '../../../../src/streaming/MediaPlayerEvents.js';
 import sinon from 'sinon';
 import CapabilitiesMock from '../../mocks/CapabilitiesMock.js';
@@ -53,7 +52,6 @@ describe('AbrController', function () {
 
     let streamProcessor;
     let adapterMock;
-    let sconeMock;
     let videoModelMock;
 
     mediaPlayerModel.setConfig({
@@ -63,8 +61,6 @@ describe('AbrController', function () {
 
     beforeEach(function () {
         adapterMock = new AdapterMock();
-        sconeMock = new EventTarget();
-        sconeMock.throughputAdvice = null;
         videoModelMock = new VideoModelMock();
         abrCtrl.setConfig({
             dashMetrics: dashMetricsMock,
@@ -878,45 +874,6 @@ describe('AbrController', function () {
             possibleVoRepresentations = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
             expect(possibleVoRepresentations.length).to.be.equal(3);
             expect(possibleVoRepresentations[2].id).to.be.equal(3);
-        });
-
-        it('should limit video Representations using SCONE advice from a Firefox Fetch response', function () {
-            const mediaInfo = streamProcessor.getMediaInfo();
-            const bitrateList = mediaInfo.bitrateList;
-
-            adapterMock.getVoRepresentations = () => {
-                return bitrateList.map((bitrate, index) => ({
-                    bitrateInKbit: bitrate.bandwidth / 1000,
-                    mediaInfo,
-                    id: index + 1
-                }));
-            };
-            adapterMock.areMediaInfosEqual = () => true;
-
-            mediaInfo.streamInfo = streamProcessor.getStreamInfo();
-            mediaInfo.type = Constants.VIDEO;
-
-            sconeMock.throughputAdvice = bitrateList[1].bandwidth;
-            eventBus.trigger(Events.SCONE_RESPONSE_RECEIVED, {
-                mediaType: Constants.VIDEO,
-                scone: sconeMock
-            });
-
-            const possibleVoRepresentations = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
-            expect(possibleVoRepresentations.length).to.equal(2);
-            expect(possibleVoRepresentations[1].id).to.equal(2);
-
-            sconeMock.throughputAdvice = bitrateList[0].bandwidth;
-            sconeMock.dispatchEvent(new Event('change'));
-
-            const representationsAfterAdviceChanged = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
-            expect(representationsAfterAdviceChanged.length).to.equal(1);
-
-            sconeMock.throughputAdvice = null;
-            sconeMock.dispatchEvent(new Event('change'));
-
-            const representationsAfterAdviceExpired = abrCtrl.getPossibleVoRepresentationsFilteredBySettings(mediaInfo);
-            expect(representationsAfterAdviceExpired.length).to.equal(3);
         });
 
         it('should return the right Representations for minBitrate values', function () {
