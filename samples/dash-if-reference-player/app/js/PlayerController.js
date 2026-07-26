@@ -374,8 +374,20 @@ export class PlayerController extends EventEmitter {
     }
 
     _onLog(e) {
+        if (!e) {
+            return;
+        }
+
+        this._addToExportHistory(this._eventHistory, {
+            timestamp: new Date().toISOString(),
+            sessionTime: this.getSessionTime(),
+            type: e.type,
+            level: e.level,
+            message: e.message
+        });
+
         // Only forward warning (3), error (2), and fatal (1) log messages
-        if (e && e.level <= 3) {
+        if (e.level <= 3) {
             this.emit('log', { level: e.level, message: e.message });
         }
     }
