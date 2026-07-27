@@ -409,6 +409,11 @@ function AbrController() {
                 return voRepresentations;
             }
 
+            const videoRepresentations = voRepresentations.filter((voRepresentation) => voRepresentation.mediaInfo.type === Constants.VIDEO);
+            if (videoRepresentations.length === 0) {
+                return voRepresentations;
+            }
+
             const filteredArray = voRepresentations.filter((voRepresentation) => {
                 return voRepresentation.mediaInfo.type !== Constants.VIDEO || voRepresentation.bitrateInKbit <= sconeThroughputAdvice;
             });
