@@ -64,6 +64,7 @@ function AbrController() {
         domStorage,
         droppedFramesHistory,
         instance,
+        lastAppliedSconeThroughputAdvice,
         logger,
         mediaPlayerModel,
         queuedManualQualitySwitches,
@@ -164,6 +165,7 @@ function AbrController() {
         }
 
         currentRepresentationId = undefined;
+        lastAppliedSconeThroughputAdvice = NaN;
         sconeResponse = null;
         sconeThroughputAdvice = NaN;
         droppedFramesHistory = undefined;
@@ -392,7 +394,6 @@ function AbrController() {
 
     function _updateSconeThroughputAdvice() {
         const advice = sconeResponse?.scone?.throughputAdvice ?? null;
-        logger.info(`[AbrController] Received SCONE throughput advice: ${advice}`);
         sconeThroughputAdvice = Number.isFinite(advice) && advice > 0 ? advice / 1000 : NaN;
     }
 
@@ -404,6 +405,7 @@ function AbrController() {
     function _filterBySconeThroughputAdvice(voRepresentations) {
         try {
             if (!settings.get().streaming.abr.rules.sconeRule.active || !Number.isFinite(sconeThroughputAdvice)) {
+                lastAppliedSconeThroughputAdvice = NaN;
                 return voRepresentations;
             }
 
@@ -411,7 +413,17 @@ function AbrController() {
                 return voRepresentation.mediaInfo.type !== Constants.VIDEO || voRepresentation.bitrateInKbit <= sconeThroughputAdvice;
             });
 
-            return filteredArray.length > 0 ? filteredArray : voRepresentations;
+            if (filteredArray.length === 0 || filteredArray.length === voRepresentations.length) {
+                lastAppliedSconeThroughputAdvice = NaN;
+                return voRepresentations;
+            }
+
+            if (lastAppliedSconeThroughputAdvice !== sconeThroughputAdvice) {
+                logger.info(`[AbrController] SCONE throughput advice limits the maximum video bitrate to ${sconeThroughputAdvice} kbit/s`);
+                lastAppliedSconeThroughputAdvice = sconeThroughputAdvice;
+            }
+
+            return filteredArray;
         } catch (e) {
             logger.error(e);
             return voRepresentations;
