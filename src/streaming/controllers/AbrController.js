@@ -65,6 +65,7 @@ function AbrController() {
         droppedFramesHistory,
         instance,
         lastAppliedSconeThroughputAdvice,
+        lastSconeRuleActive,
         logger,
         mediaPlayerModel,
         queuedManualQualitySwitches,
@@ -166,6 +167,7 @@ function AbrController() {
 
         currentRepresentationId = undefined;
         lastAppliedSconeThroughputAdvice = NaN;
+        lastSconeRuleActive = undefined;
         sconeResponse = null;
         sconeThroughputAdvice = NaN;
         droppedFramesHistory = undefined;
@@ -404,7 +406,13 @@ function AbrController() {
      */
     function _filterBySconeThroughputAdvice(voRepresentations) {
         try {
-            if (!settings.get().streaming.abr.rules.sconeRule.active || !Number.isFinite(sconeThroughputAdvice)) {
+            const sconeRuleActive = settings.get().streaming.abr.rules.sconeRule.active;
+            if (lastSconeRuleActive !== sconeRuleActive) {
+                logger.info(`[AbrController] SconeRule is ${sconeRuleActive ? 'enabled' : 'disabled'}`);
+                lastSconeRuleActive = sconeRuleActive;
+            }
+
+            if (!sconeRuleActive || !Number.isFinite(sconeThroughputAdvice)) {
                 lastAppliedSconeThroughputAdvice = NaN;
                 return voRepresentations;
             }
