@@ -1900,10 +1900,13 @@ export class MediaPlayerSettingClass {
                         minSegmentDownloadTimeThresholdInMs?: number,
                         minThroughputSamplesThreshold?: number
                     }
-                }
+                },
+                sconeRule?: {
+                    active?: boolean
+                },
                 l2ARule?: {
                     active?: boolean
-                }
+                },
                 loLPRule?: {
                     active?: boolean
                 }

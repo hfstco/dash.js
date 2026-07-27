@@ -276,6 +276,9 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  *                             minThroughputSamplesThreshold: 6
  *                         }
  *                     },
+ *                     sconeRule: {
+ *                         active: true
+ *                     },
  *                     l2ARule: {
  *                         active: false
  *                     },
@@ -822,6 +825,8 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  * Configuration of the Dropped Frames rule
  * @property {module:Settings~AbandonRequestsRule} [abandonRequestsRule]
  * Configuration of the Abandon Requests rule
+ * @property {module:Settings~SconeRule} [sconeRule]
+ * Configuration of the SCONE rule
  * @property {module:Settings~L2ARule} [l2ARule]
  * Configuration of the L2A rule
  * @property {module:Settings~LoLPRule} [loLPRule]
@@ -883,6 +888,12 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  * - `abandonDurationMultiplier`: Factor to multiply with the segment duration to compare against the estimated remaining download time of the current segment. See code example above.
  * - `minSegmentDownloadTimeThresholdInMs`: The AbandonRequestRule only kicks if the download time of the current segment exceeds this value.
  * - `minThroughputSamplesThreshold`: Minimum throughput samples (equivalent to number of progress events) required before the AbandonRequestRule kicks in.
+ */
+
+/**
+ * @typedef {Object} SconeRule
+ * @property {boolean} [active=true]
+ * Enable or disable limiting the maximum video bitrate using SCONE throughput advice.
  */
 
 /**
@@ -1452,6 +1463,9 @@ function Settings() {
                             minSegmentDownloadTimeThresholdInMs: 500,
                             minThroughputSamplesThreshold: 6
                         }
+                    },
+                    sconeRule: {
+                        active: true
                     },
                     l2ARule: {
                         active: false,

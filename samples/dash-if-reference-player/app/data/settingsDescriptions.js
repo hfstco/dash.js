@@ -87,6 +87,9 @@ const SETTINGS_DESCRIPTIONS = {
     'opt-rule-abandon':
         'Enable or disable the AbandonRequestsRule.',
 
+    'opt-rule-scone':
+        'Enable or disable limiting the maximum video bitrate using SCONE throughput advice.',
+
     'opt-rule-l2a':
         'Enable or disable the L2ARule.',
 

@@ -403,7 +403,7 @@ function AbrController() {
      */
     function _filterBySconeThroughputAdvice(voRepresentations) {
         try {
-            if (!Number.isFinite(sconeThroughputAdvice)) {
+            if (!settings.get().streaming.abr.rules.sconeRule.active || !Number.isFinite(sconeThroughputAdvice)) {
                 return voRepresentations;
             }
 
