@@ -395,4 +395,79 @@ describe('ThroughputController', () => {
             expect(result).to.have.lengthOf(3)
         })
     })
+
+    describe('Careful Resume burst', () => {
+        // Four segments of 100 kB, all requested at t0, first byte after 600 ms, finished after 700, 800, 900 and 1000 ms
+        function _addBurstMetrics(numberOfEntries = 4, responsecode = 200) {
+            const t0 = new Date('2026-11-10T10:00:00.000Z').getTime();
+            for (let i = 0; i < numberOfEntries; i++) {
+                eventBus.trigger(MediaPlayerEvents.METRIC_ADDED, {
+                    mediaType: 'video',
+                    metric: 'HttpList',
+                    value: {
+                        type: 'MediaSegment',
+                        url: `burst-${i}.m4v`,
+                        trequest: new Date(t0),
+                        tresponse: new Date(t0 + 600),
+                        _tfinish: new Date(t0 + 700 + i * 100),
+                        responsecode,
+                        trace: [
+                            { s: new Date(t0 + 600), d: 50, b: [50000] },
+                            { s: new Date(t0 + 650), d: 50 + i * 100, b: [50000] }
+                        ],
+                        _stream: 'video',
+                        _carefulResumeBurst: { index: i, size: 4 }
+                    }
+                });
+            }
+        }
+
+        function _setThroughputMode(throughputMode) {
+            settings.update({
+                streaming: {
+                    carefulResume: { throughputMode },
+                    abr: { throughput: { useResourceTimingApi: false, useNetworkInformationApi: false } }
+                }
+            });
+        }
+
+        it('should add one aggregate sample over the whole burst', () => {
+            _setThroughputMode('aggregate');
+            _addBurstMetrics();
+            const result = throughputController.getRawThroughputData('video');
+
+            expect(result).to.have.lengthOf(1);
+            // 400 kB between first response byte (600 ms) and last finish (1000 ms)
+            expect(result[0].value).to.be.equal(8000);
+            expect(result[0].downloadedBytes).to.be.equal(400000);
+        });
+
+        it('should wait until all burst segments are loaded', () => {
+            _setThroughputMode('aggregate');
+            _addBurstMetrics(3);
+
+            expect(throughputController.getAverageThroughput('video')).to.be.NaN;
+        });
+
+        it('should not count failed burst requests', () => {
+            _setThroughputMode('aggregate');
+            _addBurstMetrics(4, 404);
+
+            expect(throughputController.getAverageThroughput('video')).to.be.NaN;
+        });
+
+        it('should ignore burst segments', () => {
+            _setThroughputMode('ignore');
+            _addBurstMetrics();
+
+            expect(throughputController.getAverageThroughput('video')).to.be.NaN;
+        });
+
+        it('should add one sample per burst segment in raw mode', () => {
+            _setThroughputMode('raw');
+            _addBurstMetrics();
+
+            expect(throughputController.getRawThroughputData('video')).to.have.lengthOf(4);
+        });
+    })
 })

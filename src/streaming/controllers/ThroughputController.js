@@ -48,12 +48,14 @@ function ThroughputController() {
 
     let throughputModel,
         playbackController,
+        carefulResumeBurstEntries,
         settings;
 
     function initialize() {
         throughputModel = ThroughputModel(context).create({
             settings
         });
+        carefulResumeBurstEntries = new Map();
         _registerEvents();
     }
 
@@ -96,8 +98,68 @@ function ThroughputController() {
      */
     function _onMetricAdded(e) {
         if (e.metric === MetricsConstants.HTTP_REQUEST && e.value && (e.value.type === HTTPRequest.MPD_TYPE || (e.value.type === HTTPRequest.MEDIA_SEGMENT_TYPE && (e.mediaType === Constants.AUDIO || e.mediaType === Constants.VIDEO)))) {
+            if (e.value._carefulResumeBurst) {
+                _onCarefulResumeBurstEntry(e.mediaType, e.value);
+                return;
+            }
             throughputModel.addEntry(e.mediaType, e.value);
         }
+    }
+
+    /**
+     * Segments of a Careful Resume startup burst share the resumed congestion window, so a per-segment
+     * throughput is meaningless. Depending on the settings they are replaced by one aggregate sample,
+     * ignored, or added unmodified.
+     * @param {string} mediaType
+     * @param {object} httpRequest
+     * @private
+     */
+    function _onCarefulResumeBurstEntry(mediaType, httpRequest) {
+        const mode = settings.get().streaming.carefulResume.throughputMode;
+        if (mode === 'raw') {
+            throughputModel.addEntry(mediaType, httpRequest);
+            return;
+        }
+        if (mode === 'ignore') {
+            return;
+        }
+
+        // Failed attempts are retried and reported again, keep successful downloads only
+        if (httpRequest.responsecode < 200 || httpRequest.responsecode > 299 || !httpRequest.trace || !httpRequest.trace.length) {
+            return;
+        }
+        carefulResumeBurstEntries.set(httpRequest.url, httpRequest);
+        if (carefulResumeBurstEntries.size < httpRequest._carefulResumeBurst.size) {
+            return;
+        }
+
+        const entries = Array.from(carefulResumeBurstEntries.values());
+        carefulResumeBurstEntries.clear();
+        throughputModel.addEntry(mediaType, _getCarefulResumeAggregate(entries));
+    }
+
+    /**
+     * One synthetic request covering the whole burst: all bytes over the time from the first response byte to the last finished download
+     * @param {object[]} entries
+     * @return {object}
+     * @private
+     */
+    function _getCarefulResumeAggregate(entries) {
+        const minDate = (dates) => new Date(Math.min(...dates.map(d => d.getTime())));
+        const trequest = minDate(entries.map(entry => entry.trequest));
+        const tresponse = minDate(entries.map(entry => entry.tresponse));
+        const tfinish = new Date(Math.max(...entries.map(entry => entry._tfinish.getTime())));
+        const bytes = entries.reduce((total, entry) => total + entry.trace.reduce((sum, trace) => sum + trace.b[0], 0), 0);
+
+        return {
+            type: HTTPRequest.MEDIA_SEGMENT_TYPE,
+            url: entries[0].url,
+            trequest,
+            tresponse,
+            _tfinish: tfinish,
+            _fileLoaderType: Constants.FILE_LOADER_TYPES.FETCH,
+            trace: [{ s: tresponse, d: Math.max(tfinish.getTime() - tresponse.getTime(), 1), b: [bytes] }]
+        };
     }
 
     /**
@@ -459,6 +521,7 @@ function ThroughputController() {
 
     function reset() {
         throughputModel.reset();
+        carefulResumeBurstEntries.clear();
         _resetEvents();
     }
 

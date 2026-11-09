@@ -220,10 +220,19 @@ function ScheduleController(config) {
                 return false;
             }
             const currentRepresentation = representationController.getCurrentRepresentation();
-            return currentRepresentation && (lastInitializedRepresentationId == null || switchTrack || _shouldBuffer());
+            return currentRepresentation && !_isCarefulResumeBurstLoading() && (lastInitializedRepresentationId == null || switchTrack || _shouldBuffer());
         } catch (e) {
             return false;
         }
+    }
+
+    /**
+     * Careful Resume: hold the next ABR decision and request until the whole startup burst is loaded, then continue one request at a time
+     * @return {boolean}
+     * @private
+     */
+    function _isCarefulResumeBurstLoading() {
+        return fragmentModel.getRequests({ state: FragmentModel.FRAGMENT_MODEL_LOADING }).some(request => request.carefulResumeBurst);
     }
 
     /**

@@ -1819,6 +1819,11 @@ export class MediaPlayerSettingClass {
             video?: number;
             audio?: number;
         };
+        carefulResume?: {
+            enabled?: boolean;
+            burstSegments?: number;
+            throughputMode?: 'aggregate' | 'ignore' | 'raw';
+        };
         trackSwitchMode?: {
             video?: TrackSwitchMode;
             audio?: TrackSwitchMode;
