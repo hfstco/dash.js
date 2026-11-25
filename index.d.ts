@@ -1823,6 +1823,8 @@ export class MediaPlayerSettingClass {
             enabled?: boolean;
             burstSegments?: number;
             throughputMode?: 'aggregate' | 'ignore' | 'raw';
+            requireReturningClient?: boolean;
+            returningClientTtl?: number;
         };
         trackSwitchMode?: {
             video?: TrackSwitchMode;

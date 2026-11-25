@@ -35,6 +35,7 @@ import BoxParser from './utils/BoxParser.js';
 import Capabilities from './utils/Capabilities.js';
 import CapabilitiesFilter from './utils/CapabilitiesFilter.js';
 import CmcdController from './controllers/CmcdController.js';
+import CarefulResumeController from './controllers/CarefulResumeController.js';
 import CatchupController from './controllers/CatchupController.js';
 import ClientDataReportingController from './controllers/ClientDataReportingController.js';
 import CmsdModel from './models/CmsdModel.js';
@@ -2543,6 +2544,7 @@ function MediaPlayer() {
         streamController.reset();
         gapController.reset();
         catchupController.reset();
+        CarefulResumeController(context).getInstance().reset();
         playbackController.reset();
         serviceDescriptionController.reset();
         contentSteeringController.reset();

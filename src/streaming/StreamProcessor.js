@@ -33,6 +33,7 @@ import DashConstants from '../dash/constants/DashConstants.js';
 import MetricsConstants from './constants/MetricsConstants.js';
 import FragmentModel from './models/FragmentModel.js';
 import BufferController from './controllers/BufferController.js';
+import CarefulResumeController from './controllers/CarefulResumeController.js';
 import NotFragmentedTextBufferController from './text/NotFragmentedTextBufferController.js';
 import ScheduleController from './controllers/ScheduleController.js';
 import RepresentationController from '../dash/controllers/RepresentationController.js';
@@ -80,7 +81,6 @@ function StreamProcessor(config) {
 
     let bufferController,
         bufferingTime,
-        carefulResumeBurstDone,
         containsVideoTrack,
         currentMediaInfo,
         dashHandler,
@@ -214,7 +214,6 @@ function StreamProcessor(config) {
         mediaInfoArr = [];
         currentMediaInfo = null;
         bufferingTime = 0;
-        carefulResumeBurstDone = false;
         shouldUseExplicitTimeForRequest = false;
         shouldRepeatRequest = false;
         qualityChangeInProgress = false;
@@ -473,18 +472,18 @@ function StreamProcessor(config) {
     }
 
     /**
-     * Careful Resume hack: the first video request of this stream is sent together with the next burstSegments - 1
-     * segments of the same representation, so that they can fill a resumed congestion window within one RTT.
+     * Careful Resume hack: the first video request is sent together with the next burstSegments - 1 segments of the
+     * same representation, so that they can fill a resumed congestion window within one RTT. The
+     * CarefulResumeController decides whether such a window can be expected.
      * @param {object} request
      * @return {object[]}
      * @private
      */
     function _getCarefulResumeBurst(request) {
         const crSettings = settings.get().streaming.carefulResume;
-        if (carefulResumeBurstDone || type !== Constants.VIDEO || !crSettings || !crSettings.enabled) {
+        if (type !== Constants.VIDEO || !CarefulResumeController(context).getInstance().shouldRequestBurst(request.url)) {
             return [request];
         }
-        carefulResumeBurstDone = true;
 
         const burst = [request];
         while (burst.length < crSettings.burstSegments) {
@@ -1335,6 +1334,9 @@ function StreamProcessor(config) {
         const bytes = chunk.bytes;
         const representationId = chunk.representation.id;
         const currentRepresentation = getRepresentation(representationId);
+        if (type === Constants.VIDEO) {
+            CarefulResumeController(context).getInstance().onVideoSegmentLoaded(e.request.url);
+        }
         // If we switch tracks this event might be fired after the representations in the RepresentationController have been updated according to the new MediaInfo.
         // In this case there will be no currentRepresentation and voRepresentation matching the "old" quality
         if (currentRepresentation) {

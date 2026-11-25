@@ -41,6 +41,7 @@ const legacyKeysAndReplacements = [
 
 const LOCAL_STORAGE_BITRATE_KEY_TEMPLATE = 'dashjs_?_bitrate';
 const LOCAL_STORAGE_SETTINGS_KEY_TEMPLATE = 'dashjs_?_settings';
+const LOCAL_STORAGE_CAREFUL_RESUME_KEY = 'dashjs_careful_resume';
 
 const STORAGE_TYPE_LOCAL = 'localStorage';
 const STORAGE_TYPE_SESSION = 'sessionStorage';
@@ -218,9 +219,45 @@ function DOMStorage(config) {
         }
     }
 
+    /**
+     * Host this client loaded video from within the last carefulResume.returningClientTtl milliseconds
+     * @return {string|null}
+     */
+    function getSavedCarefulResumeHost() {
+        checkConfig();
+
+        if (!isSupported(STORAGE_TYPE_LOCAL)) {
+            return null;
+        }
+
+        try {
+            const obj = JSON.parse(localStorage.getItem(LOCAL_STORAGE_CAREFUL_RESUME_KEY)) || {};
+            const isExpired = new Date().getTime() - obj.timestamp > settings.get().streaming.carefulResume.returningClientTtl;
+
+            return obj.host && !isExpired ? obj.host : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // The exact time is stored, as it is compared to the lifetime of the congestion control parameters saved by the server
+    function setSavedCarefulResumeHost(host) {
+        if (!isSupported(STORAGE_TYPE_LOCAL)) {
+            return;
+        }
+
+        try {
+            localStorage.setItem(LOCAL_STORAGE_CAREFUL_RESUME_KEY, JSON.stringify({ host, timestamp: new Date().getTime() }));
+        } catch (e) {
+            logger.error(e.message);
+        }
+    }
+
     instance = {
         getSavedBitrateSettings,
         setSavedBitrateSettings,
+        getSavedCarefulResumeHost,
+        setSavedCarefulResumeHost,
         getSavedMediaSettings,
         setSavedMediaSettings
     };
