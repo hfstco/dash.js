@@ -80,7 +80,7 @@ function StreamProcessor(config) {
 
     let bufferController,
         bufferingTime,
-        carefulResumeBurstDone,
+        batchStartupDone,
         containsVideoTrack,
         currentMediaInfo,
         dashHandler,
@@ -214,7 +214,7 @@ function StreamProcessor(config) {
         mediaInfoArr = [];
         currentMediaInfo = null;
         bufferingTime = 0;
-        carefulResumeBurstDone = false;
+        batchStartupDone = false;
         shouldUseExplicitTimeForRequest = false;
         shouldRepeatRequest = false;
         qualityChangeInProgress = false;
@@ -465,7 +465,7 @@ function StreamProcessor(config) {
         scheduleController.setTimeToLoadDelay(0);
         if (!_shouldIgnoreRequest(request)) {
             logger.debug(`Next fragment request url for stream id ${streamInfo.id} and media type ${type} is ${request.url} with request range ${request.range}`);
-            _getCarefulResumeBurst(request).forEach(r => fragmentModel.executeRequest(r));
+            _getBatchStartupRequests(request).forEach(r => fragmentModel.executeRequest(r));
         } else {
             logger.warn(`Fragment request url ${request.url} for stream id ${streamInfo.id} and media type ${type} is on the ignore list and will be skipped`);
             _noValidRequest();
@@ -473,21 +473,21 @@ function StreamProcessor(config) {
     }
 
     /**
-     * Careful Resume hack: the first video request of this stream is sent together with the next burstSegments - 1
+     * Batch startup: the first video request of this stream is sent together with the next burstSegments - 1
      * segments of the same representation, so that they can fill a resumed congestion window within one RTT.
      * @param {object} request
      * @return {object[]}
      * @private
      */
-    function _getCarefulResumeBurst(request) {
-        const crSettings = settings.get().streaming.carefulResume;
-        if (carefulResumeBurstDone || type !== Constants.VIDEO || !crSettings || !crSettings.enabled) {
+    function _getBatchStartupRequests(request) {
+        const batchSettings = settings.get().streaming.batchStartup;
+        if (batchStartupDone || type !== Constants.VIDEO || !batchSettings || !batchSettings.enabled) {
             return [request];
         }
-        carefulResumeBurstDone = true;
+        batchStartupDone = true;
 
         const burst = [request];
-        while (burst.length < crSettings.burstSegments) {
+        while (burst.length < batchSettings.burstSegments) {
             const next = dashHandler.getNextSegmentRequest(currentMediaInfo, getRepresentation());
             if (!next) {
                 break;
@@ -500,9 +500,9 @@ function StreamProcessor(config) {
         }
 
         burst.forEach((r, index) => {
-            r.carefulResumeBurst = { index, size: burst.length };
+            r.batchStartup = { index, size: burst.length };
         });
-        logger.info(`Careful Resume: requesting ${burst.length} ${type} segments at once, starting at ${request.url}`);
+        logger.info(`Batch startup: requesting ${burst.length} ${type} segments at once, starting at ${request.url}`);
 
         return burst;
     }

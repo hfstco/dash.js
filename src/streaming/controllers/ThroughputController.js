@@ -48,14 +48,14 @@ function ThroughputController() {
 
     let throughputModel,
         playbackController,
-        carefulResumeBurstEntries,
+        batchStartupEntries,
         settings;
 
     function initialize() {
         throughputModel = ThroughputModel(context).create({
             settings
         });
-        carefulResumeBurstEntries = new Map();
+        batchStartupEntries = new Map();
         _registerEvents();
     }
 
@@ -98,8 +98,8 @@ function ThroughputController() {
      */
     function _onMetricAdded(e) {
         if (e.metric === MetricsConstants.HTTP_REQUEST && e.value && (e.value.type === HTTPRequest.MPD_TYPE || (e.value.type === HTTPRequest.MEDIA_SEGMENT_TYPE && (e.mediaType === Constants.AUDIO || e.mediaType === Constants.VIDEO)))) {
-            if (e.value._carefulResumeBurst) {
-                _onCarefulResumeBurstEntry(e.mediaType, e.value);
+            if (e.value._batchStartup) {
+                _onBatchStartupEntry(e.mediaType, e.value);
                 return;
             }
             throughputModel.addEntry(e.mediaType, e.value);
@@ -107,15 +107,15 @@ function ThroughputController() {
     }
 
     /**
-     * Segments of a Careful Resume startup burst share the resumed congestion window, so a per-segment
+     * Segments of a batch startup share the resumed congestion window, so a per-segment
      * throughput is meaningless. Depending on the settings they are replaced by one aggregate sample,
      * ignored, or added unmodified.
      * @param {string} mediaType
      * @param {object} httpRequest
      * @private
      */
-    function _onCarefulResumeBurstEntry(mediaType, httpRequest) {
-        const mode = settings.get().streaming.carefulResume.throughputMode;
+    function _onBatchStartupEntry(mediaType, httpRequest) {
+        const mode = settings.get().streaming.batchStartup.throughputMode;
         if (mode === 'raw') {
             throughputModel.addEntry(mediaType, httpRequest);
             return;
@@ -128,14 +128,14 @@ function ThroughputController() {
         if (httpRequest.responsecode < 200 || httpRequest.responsecode > 299 || !httpRequest.trace || !httpRequest.trace.length) {
             return;
         }
-        carefulResumeBurstEntries.set(httpRequest.url, httpRequest);
-        if (carefulResumeBurstEntries.size < httpRequest._carefulResumeBurst.size) {
+        batchStartupEntries.set(httpRequest.url, httpRequest);
+        if (batchStartupEntries.size < httpRequest._batchStartup.size) {
             return;
         }
 
-        const entries = Array.from(carefulResumeBurstEntries.values());
-        carefulResumeBurstEntries.clear();
-        throughputModel.addEntry(mediaType, _getCarefulResumeAggregate(entries));
+        const entries = Array.from(batchStartupEntries.values());
+        batchStartupEntries.clear();
+        throughputModel.addEntry(mediaType, _getBatchStartupAggregate(entries));
     }
 
     /**
@@ -144,7 +144,7 @@ function ThroughputController() {
      * @return {object}
      * @private
      */
-    function _getCarefulResumeAggregate(entries) {
+    function _getBatchStartupAggregate(entries) {
         const minDate = (dates) => new Date(Math.min(...dates.map(d => d.getTime())));
         const trequest = minDate(entries.map(entry => entry.trequest));
         const tresponse = minDate(entries.map(entry => entry.tresponse));
@@ -521,7 +521,7 @@ function ThroughputController() {
 
     function reset() {
         throughputModel.reset();
-        carefulResumeBurstEntries.clear();
+        batchStartupEntries.clear();
         _resetEvents();
     }
 

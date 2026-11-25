@@ -196,7 +196,7 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  *            lastMediaSettingsCachingInfo: { enabled: true, ttl: 360000 },
  *            saveLastMediaSettingsForCurrentStreamingSession: true,
  *            cacheLoadThresholds: { video: 10, audio: 5 },
- *            carefulResume: { enabled: false, burstSegments: 4, throughputMode: 'aggregate' },
+ *            batchStartup: { enabled: false, burstSegments: 4, throughputMode: 'aggregate' },
  *            trackSwitchMode: {
  *                audio: Constants.TRACK_SWITCH_MODE_ALWAYS_REPLACE,
  *                video: Constants.TRACK_SWITCH_MODE_NEVER_REPLACE
@@ -952,7 +952,7 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  */
 
 /**
- * @typedef {Object} CarefulResumeSettings
+ * @typedef {Object} BatchStartupSettings
  * @property {boolean} [enabled=false]
  * Request the first burstSegments video segments at once instead of one after the other, so that together they can fill a resumed congestion window within one RTT.
  * @property {number} [burstSegments=4]
@@ -1115,8 +1115,8 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  * Set to true if dash.js should save media settings from last selected track for incoming track selection during current streaming session.
  * @property {module:Settings~AudioVideoSettings} [cacheLoadThresholds={video: 10, audio: 5}]
  * For a given media type, the threshold which defines if the response to a fragment request is coming from browser cache or not.
- * @property {module:Settings~CarefulResumeSettings} [carefulResume]
- * Experimental startup burst for QUIC Careful Resume.
+ * @property {module:Settings~BatchStartupSettings} [batchStartup]
+ * Experimental startup burst, intended for a server that uses QUIC Careful Resume.
  * @property {module:Settings~AudioVideoSettings} [trackSwitchMode={video: "neverReplace", audio: "alwaysReplace"}]
  * For a given media type defines if existing segments in the buffer should be overwritten once the track is switched. For instance if the user switches the audio language the existing segments in the audio buffer will be replaced when setting this value to "alwaysReplace".
  *
@@ -1389,7 +1389,7 @@ function Settings() {
                 video: 10,
                 audio: 5
             },
-            carefulResume: {
+            batchStartup: {
                 enabled: false,
                 burstSegments: 4,
                 throughputMode: 'aggregate'

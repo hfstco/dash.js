@@ -194,7 +194,7 @@ function MetricsModel(config) {
         vo._serviceLocation = request.serviceLocation || null;
         vo._fileLoaderType = request.fileLoaderType;
         vo._resourceTimingValues = request.resourceTimingValues;
-        vo._carefulResumeBurst = request.carefulResumeBurst || null;
+        vo._batchStartup = request.batchStartup || null;
         vo._streamId = request && request.representation && request.representation.mediaInfo && request.representation.mediaInfo.streamInfo ? request.representation.mediaInfo.streamInfo.id : null;
 
         if (traces) {

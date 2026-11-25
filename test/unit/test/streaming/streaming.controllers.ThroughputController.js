@@ -396,7 +396,7 @@ describe('ThroughputController', () => {
         })
     })
 
-    describe('Careful Resume burst', () => {
+    describe('Batch startup', () => {
         // Four segments of 100 kB, all requested at t0, first byte after 600 ms, finished after 700, 800, 900 and 1000 ms
         function _addBurstMetrics(numberOfEntries = 4, responsecode = 200) {
             const t0 = new Date('2026-11-10T10:00:00.000Z').getTime();
@@ -416,7 +416,7 @@ describe('ThroughputController', () => {
                             { s: new Date(t0 + 650), d: 50 + i * 100, b: [50000] }
                         ],
                         _stream: 'video',
-                        _carefulResumeBurst: { index: i, size: 4 }
+                        _batchStartup: { index: i, size: 4 }
                     }
                 });
             }
@@ -425,7 +425,7 @@ describe('ThroughputController', () => {
         function _setThroughputMode(throughputMode) {
             settings.update({
                 streaming: {
-                    carefulResume: { throughputMode },
+                    batchStartup: { throughputMode },
                     abr: { throughput: { useResourceTimingApi: false, useNetworkInformationApi: false } }
                 }
             });
