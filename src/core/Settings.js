@@ -196,7 +196,7 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
  *            lastMediaSettingsCachingInfo: { enabled: true, ttl: 360000 },
  *            saveLastMediaSettingsForCurrentStreamingSession: true,
  *            cacheLoadThresholds: { video: 10, audio: 5 },
- *            carefulResume: { enabled: false, burstSegments: 4, throughputMode: 'aggregate', requireReturningClient: true, returningClientTtl: 600000 },
+ *            carefulResume: { enabled: false, burstSegments: 4, throughputMode: 'aggregate' },
  *            trackSwitchMode: {
  *                audio: Constants.TRACK_SWITCH_MODE_ALWAYS_REPLACE,
  *                video: Constants.TRACK_SWITCH_MODE_NEVER_REPLACE
@@ -954,15 +954,11 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
 /**
  * @typedef {Object} CarefulResumeSettings
  * @property {boolean} [enabled=false]
- * Request the first burstSegments video segments at once instead of one after the other, so that together they can fill a resumed congestion window within one RTT. Enabling this states that the server supports Careful Resume (RFC 9959). The burst is not sent if the Resource Timing API reports a protocol other than HTTP/3 for the host of the segments.
+ * Request the first burstSegments video segments at once instead of one after the other, so that together they can fill a resumed congestion window within one RTT.
  * @property {number} [burstSegments=4]
  * Number of video segments in the startup burst.
  * @property {string} [throughputMode='aggregate']
  * How the burst feeds the throughput estimate: 'aggregate' (one sample: all burst bytes over the burst time), 'ignore' (no samples) or 'raw' (one sample per segment, as in unmodified dash.js).
- * @property {boolean} [requireReturningClient=true]
- * Only send the burst if this client loaded video from the same host within the last returningClientTtl milliseconds. A client cannot see whether the server holds saved congestion control parameters for its path, but this is the condition under which the server can have saved them. If set to false the burst is sent at every startup.
- * @property {number} [returningClientTtl=600000]
- * Time in milliseconds for which a video download from a host is remembered in the local storage. It should not exceed the lifetime of the saved congestion control parameters at the server.
  */
 
 /**
@@ -1396,9 +1392,7 @@ function Settings() {
             carefulResume: {
                 enabled: false,
                 burstSegments: 4,
-                throughputMode: 'aggregate',
-                requireReturningClient: true,
-                returningClientTtl: 600000
+                throughputMode: 'aggregate'
             },
             trackSwitchMode: {
                 audio: Constants.TRACK_SWITCH_MODE_ALWAYS_REPLACE,
