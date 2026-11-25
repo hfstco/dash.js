@@ -82,18 +82,26 @@ function XHRLoader() {
         }
         let body = commonMediaRequest.body || null;
         xhr.send(body);
-        commonMediaRequest.customData.abort = abort.bind(this);
+        // Several requests can be in flight at once, so each one aborts its own XMLHttpRequest
+        const requestXhr = xhr;
+        commonMediaRequest.customData.abort = () => _abortXhr(requestXhr);
         return true;
     }
 
     function abort() {
-        if (xhr) {
+        _abortXhr(xhr);
+    }
+
+    function _abortXhr(target) {
+        if (target) {
             // Clear most handlers before abort to prevent unwanted callbacks
-            xhr.onloadend = xhr.onerror = xhr.onprogress = xhr.onload = null;
+            target.onloadend = target.onerror = target.onprogress = target.onload = null;
             // Call abort - this will trigger onabort callback if set
-            xhr.abort();
+            target.abort();
             // Clear remaining handlers after abort to prevent memory leaks
-            xhr.onabort = xhr.ontimeout = null;
+            target.onabort = target.ontimeout = null;
+        }
+        if (target === xhr) {
             xhr = null;
         }
     }

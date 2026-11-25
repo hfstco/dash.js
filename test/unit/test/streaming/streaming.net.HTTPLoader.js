@@ -203,6 +203,19 @@ describe('HTTPLoader', function () {
         requests[0].respond(200);
     });
 
+    it('should abort all inflight requests', async () => {
+        httpLoader = _createHttpLoader();
+
+        for (let i = 0; i < 4; i++) {
+            await httpLoader.load({ request: {} });
+        }
+        expect(requests.length).to.equal(4);
+
+        httpLoader.abort();
+
+        expect(requests.filter(xhr => xhr.aborted).length).to.equal(4);
+    });
+
     describe('request timeout selection', function () {
         [
             {

@@ -304,6 +304,7 @@ function StreamProcessor(config) {
 
             // Stop segment requests until we have figured out for which time we need to request a segment. We don't want to replace existing segments.
             clearScheduleTimer();
+            _rearmBatchStartup();
             fragmentModel.abortRequests();
 
             // Abort operations to the SourceBuffer Sink and reset the BufferControllers isBufferingCompleted state.
@@ -370,6 +371,7 @@ function StreamProcessor(config) {
                 clearScheduleTimer();
 
                 // Abort all ongoing requests
+                _rearmBatchStartup();
                 fragmentModel.abortRequests();
 
                 // buffering not complete anymore and abort current append operation to SourceBuffer
@@ -505,6 +507,17 @@ function StreamProcessor(config) {
         logger.info(`Batch startup: requesting ${burst.length} ${type} segments at once, starting at ${request.url}`);
 
         return burst;
+    }
+
+    /**
+     * A seek aborts the batch startup requests that are still loading, e.g. the seek over a gap at the start of the
+     * presentation right after the first request. Send the batch again with the first request after the seek.
+     * @private
+     */
+    function _rearmBatchStartup() {
+        if (fragmentModel.getRequests({ state: FragmentModel.FRAGMENT_MODEL_LOADING }).some(request => request.batchStartup)) {
+            batchStartupDone = false;
+        }
     }
 
     /**

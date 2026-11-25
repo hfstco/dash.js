@@ -664,7 +664,8 @@ function HTTPLoader(cfg) {
         delayedRequests.forEach(x => clearTimeout(x.delayTimeout));
         delayedRequests = [];
 
-        httpRequests.forEach(req => {
+        // Aborting a request removes it from httpRequests, so iterate over a copy to reach all of them
+        httpRequests.slice().forEach(req => {
             const reqData = req.customData
             if (!reqData) {
                 return
