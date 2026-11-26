@@ -494,15 +494,16 @@ function StreamProcessor(config) {
     }
 
     /**
-     * Batch startup: the first video request of this stream is sent together with the next burstSegments - 1
-     * segments of the same representation, so that they can fill a resumed congestion window within one RTT.
+     * Batch startup: the first video and the first audio request of this stream are each sent together with the next
+     * burstSegments - 1 segments of the same representation, so that they can fill a resumed congestion window within
+     * one RTT.
      * @param {object} request
      * @return {object[]}
      * @private
      */
     function _getBatchStartupRequests(request) {
         const batchSettings = settings.get().streaming.batchStartup;
-        if (batchStartupDone || type !== Constants.VIDEO || !batchSettings || !batchSettings.enabled) {
+        if (batchStartupDone || (type !== Constants.VIDEO && type !== Constants.AUDIO) || !batchSettings || !batchSettings.enabled) {
             return [request];
         }
         batchStartupDone = true;
@@ -544,7 +545,7 @@ function StreamProcessor(config) {
 
     /**
      * Playback starts once the first audio and the first video segment are buffered, and the responses arrive in the
-     * order of the requests. The batch is therefore held until the first audio segment is requested. Otherwise the
+     * order of the requests. The video batch is therefore held until the audio batch is requested. Otherwise the
      * audio would wait behind all video segments of the batch.
      * @return {boolean}
      * @private

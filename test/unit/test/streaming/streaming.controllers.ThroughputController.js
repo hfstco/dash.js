@@ -398,24 +398,24 @@ describe('ThroughputController', () => {
 
     describe('Batch startup', () => {
         // Four segments of 100 kB, all requested at t0, first byte after 600 ms, finished after 700, 800, 900 and 1000 ms
-        function _addBurstMetrics(numberOfEntries = 4, responsecode = 200) {
+        function _addBurstMetrics(numberOfEntries = 4, responsecode = 200, mediaType = 'video', firstEntry = 0, bytes = 50000) {
             const t0 = new Date('2026-11-10T10:00:00.000Z').getTime();
-            for (let i = 0; i < numberOfEntries; i++) {
+            for (let i = firstEntry; i < numberOfEntries; i++) {
                 eventBus.trigger(MediaPlayerEvents.METRIC_ADDED, {
-                    mediaType: 'video',
+                    mediaType,
                     metric: 'HttpList',
                     value: {
                         type: 'MediaSegment',
-                        url: `burst-${i}.m4v`,
+                        url: `burst-${mediaType}-${i}.m4s`,
                         trequest: new Date(t0),
                         tresponse: new Date(t0 + 600),
                         _tfinish: new Date(t0 + 700 + i * 100),
                         responsecode,
                         trace: [
-                            { s: new Date(t0 + 600), d: 50, b: [50000] },
-                            { s: new Date(t0 + 650), d: 50 + i * 100, b: [50000] }
+                            { s: new Date(t0 + 600), d: 50, b: [bytes] },
+                            { s: new Date(t0 + 650), d: 50 + i * 100, b: [bytes] }
                         ],
-                        _stream: 'video',
+                        _stream: mediaType,
                         _batchStartup: { index: i, size: 4 }
                     }
                 });
@@ -440,6 +440,21 @@ describe('ThroughputController', () => {
             // 400 kB between first response byte (600 ms) and last finish (1000 ms)
             expect(result[0].value).to.be.equal(8000);
             expect(result[0].downloadedBytes).to.be.equal(400000);
+        });
+
+        it('should keep the bursts of video and audio apart', () => {
+            _setThroughputMode('aggregate');
+            _addBurstMetrics(2);
+            _addBurstMetrics(4, 200, 'audio', 0, 5000);
+            _addBurstMetrics(4, 200, 'video', 2);
+
+            const video = throughputController.getRawThroughputData('video');
+            const audio = throughputController.getRawThroughputData('audio');
+
+            expect(video).to.have.lengthOf(1);
+            expect(video[0].downloadedBytes).to.be.equal(400000);
+            expect(audio).to.have.lengthOf(1);
+            expect(audio[0].downloadedBytes).to.be.equal(40000);
         });
 
         it('should wait until all burst segments are loaded', () => {

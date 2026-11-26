@@ -55,7 +55,7 @@ function ThroughputController() {
         throughputModel = ThroughputModel(context).create({
             settings
         });
-        batchStartupEntries = new Map();
+        batchStartupEntries = {};
         _registerEvents();
     }
 
@@ -128,13 +128,16 @@ function ThroughputController() {
         if (httpRequest.responsecode < 200 || httpRequest.responsecode > 299 || !httpRequest.trace || !httpRequest.trace.length) {
             return;
         }
-        batchStartupEntries.set(httpRequest.url, httpRequest);
-        if (batchStartupEntries.size < httpRequest._batchStartup.size) {
+        // Video and audio each send a batch
+        batchStartupEntries[mediaType] = batchStartupEntries[mediaType] || new Map();
+        const entriesOfType = batchStartupEntries[mediaType];
+        entriesOfType.set(httpRequest.url, httpRequest);
+        if (entriesOfType.size < httpRequest._batchStartup.size) {
             return;
         }
 
-        const entries = Array.from(batchStartupEntries.values());
-        batchStartupEntries.clear();
+        const entries = Array.from(entriesOfType.values());
+        entriesOfType.clear();
         throughputModel.addEntry(mediaType, _getBatchStartupAggregate(entries));
     }
 
@@ -521,7 +524,7 @@ function ThroughputController() {
 
     function reset() {
         throughputModel.reset();
-        batchStartupEntries.clear();
+        batchStartupEntries = {};
         _resetEvents();
     }
 

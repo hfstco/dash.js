@@ -954,9 +954,9 @@ import SwitchRequest from '../streaming/rules/SwitchRequest.js';
 /**
  * @typedef {Object} BatchStartupSettings
  * @property {boolean} [enabled=false]
- * Request the first burstSegments video segments at once instead of one after the other, so that together they can fill a resumed congestion window within one RTT.
+ * Request the first burstSegments video segments and the first burstSegments audio segments at once instead of one after the other, so that together they can fill a resumed congestion window within one RTT. The audio segments are requested first.
  * @property {number} [burstSegments=4]
- * Number of video segments in the startup burst.
+ * Number of segments per media type in the startup burst.
  * @property {string} [throughputMode='aggregate']
  * How the burst feeds the throughput estimate: 'aggregate' (one sample: all burst bytes over the burst time), 'ignore' (no samples) or 'raw' (one sample per segment, as in unmodified dash.js).
  */
