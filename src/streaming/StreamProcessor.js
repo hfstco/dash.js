@@ -53,6 +53,9 @@ import TimeUtils from './utils/TimeUtils.js';
 import MediaInfoSelectionInput from './vo/MediaInfoSelectionInput.js';
 
 
+// Longest time the batch startup waits for the request of the first audio segment
+const BATCH_STARTUP_AUDIO_WAIT_MS = 1000;
+
 function StreamProcessor(config) {
 
     config = config || {};
@@ -80,7 +83,9 @@ function StreamProcessor(config) {
 
     let bufferController,
         bufferingTime,
+        batchStartupAudioRequested,
         batchStartupDone,
+        batchStartupWaitStart,
         containsVideoTrack,
         currentMediaInfo,
         dashHandler,
@@ -97,6 +102,9 @@ function StreamProcessor(config) {
         shouldRepeatRequest,
         shouldUseExplicitTimeForRequest,
         trackSwitchInProgress;
+
+    // Scope without a media type: the handler receives the events of all media types of this stream
+    const streamScope = { getStreamId };
 
     function setup() {
         logger = Debug(context).getInstance().getLogger(instance);
@@ -116,6 +124,9 @@ function StreamProcessor(config) {
         eventBus.on(Events.SET_FRAGMENTED_TEXT_AFTER_DISABLED, _onSetFragmentedTextAfterDisabled, instance);
         eventBus.on(Events.SET_NON_FRAGMENTED_TEXT, _onSetNonFragmentedText, instance);
         eventBus.on(Events.SOURCE_BUFFER_ERROR, _onSourceBufferError, instance);
+        if (type === Constants.VIDEO) {
+            eventBus.on(MediaPlayerEvents.FRAGMENT_LOADING_STARTED, _onStreamFragmentLoadingStarted, streamScope);
+        }
     }
 
     function initialize(mediaSource, hasVideoTrack, isFragmented) {
@@ -215,6 +226,8 @@ function StreamProcessor(config) {
         currentMediaInfo = null;
         bufferingTime = 0;
         batchStartupDone = false;
+        batchStartupAudioRequested = false;
+        batchStartupWaitStart = NaN;
         shouldUseExplicitTimeForRequest = false;
         shouldRepeatRequest = false;
         qualityChangeInProgress = false;
@@ -265,6 +278,7 @@ function StreamProcessor(config) {
         eventBus.off(Events.SET_FRAGMENTED_TEXT_AFTER_DISABLED, _onSetFragmentedTextAfterDisabled, instance);
         eventBus.off(Events.SET_NON_FRAGMENTED_TEXT, _onSetNonFragmentedText, instance);
         eventBus.off(Events.SOURCE_BUFFER_ERROR, _onSourceBufferError, instance);
+        eventBus.off(MediaPlayerEvents.FRAGMENT_LOADING_STARTED, _onStreamFragmentLoadingStarted, streamScope);
 
         resetInitialSettings();
         type = null;
@@ -444,6 +458,11 @@ function StreamProcessor(config) {
             return;
         }
 
+        if (_shouldBatchStartupWaitForAudio()) {
+            _noValidRequest();
+            return;
+        }
+
         let request = _getFragmentRequest();
         if (request) {
             shouldUseExplicitTimeForRequest = false;
@@ -517,6 +536,46 @@ function StreamProcessor(config) {
     function _rearmBatchStartup() {
         if (fragmentModel.getRequests({ state: FragmentModel.FRAGMENT_MODEL_LOADING }).some(request => request.batchStartup)) {
             batchStartupDone = false;
+        }
+        // The seek aborts the audio request as well
+        batchStartupAudioRequested = false;
+        batchStartupWaitStart = NaN;
+    }
+
+    /**
+     * Playback starts once the first audio and the first video segment are buffered, and the responses arrive in the
+     * order of the requests. The batch is therefore held until the first audio segment is requested. Otherwise the
+     * audio would wait behind all video segments of the batch.
+     * @return {boolean}
+     * @private
+     */
+    function _shouldBatchStartupWaitForAudio() {
+        const batchSettings = settings.get().streaming.batchStartup;
+        if (batchStartupDone || batchStartupAudioRequested || type !== Constants.VIDEO || !batchSettings || !batchSettings.enabled ||
+            !mediaController.getCurrentTrackFor(Constants.AUDIO, streamInfo.id)) {
+            return false;
+        }
+
+        const now = Date.now();
+        if (isNaN(batchStartupWaitStart)) {
+            batchStartupWaitStart = now;
+        }
+
+        return now - batchStartupWaitStart < BATCH_STARTUP_AUDIO_WAIT_MS;
+    }
+
+    /**
+     * Releases a batch startup that waits for the first audio segment request of this stream
+     * @param {object} e
+     * @private
+     */
+    function _onStreamFragmentLoadingStarted(e) {
+        if (batchStartupAudioRequested || e.mediaType !== Constants.AUDIO || e.request.type !== HTTPRequest.MEDIA_SEGMENT_TYPE) {
+            return;
+        }
+        batchStartupAudioRequested = true;
+        if (!isNaN(batchStartupWaitStart) && !batchStartupDone) {
+            scheduleController.startScheduleTimer(0);
         }
     }
 
